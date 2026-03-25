@@ -25,7 +25,9 @@ export default function App() {
 
   const onOrient = useCallback((e) => {
     if (e.beta == null) return;
-    let v = +(90 - Math.abs(e.beta)).toFixed(1);
+    // iPhoneを縦持ち・上に傾けるほど beta が小さくなる（90→0）
+    // 仰角 = 90 - beta（縦持ち水平時 beta≈90、真上向き beta≈0）
+    let v = +(90 - e.beta).toFixed(1);
     v = Math.max(0, Math.min(89, v));
     liveRef.current = v;
     setLiveDeg(v);

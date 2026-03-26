@@ -12,9 +12,10 @@ function calcSpread(dist, leftDeg, rightDeg) {
 
 // 幹周り: 直径=距離×(tan左+tan右)、幹周り=直径×π
 function calcTrunk(dist, leftDeg, rightDeg) {
-  const diam = +(dist * (Math.tan(Math.abs(leftDeg) * Math.PI / 180) + Math.tan(Math.abs(rightDeg) * Math.PI / 180))).toFixed(2);
-  const circ = +(diam * Math.PI).toFixed(1);
-  return { diam, circ };
+  const diamM = +(dist * (Math.tan(Math.abs(leftDeg) * Math.PI / 180) + Math.tan(Math.abs(rightDeg) * Math.PI / 180))).toFixed(3);
+  const diamCm = +(diamM * 100).toFixed(1); // m → cm
+  const circCm = +(diamCm * Math.PI).toFixed(1); // 幹周り cm
+  return { diam: diamCm, circ: circCm }; // どちらもcm単位
 }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function today() { const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }
@@ -647,7 +648,7 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
               <circle cx="50" cy="50" r="44" fill="rgba(93,64,55,0.3)" stroke="#8d6e63" strokeWidth="2"/>
               {[38,30,22,14,6].map((r,i)=><circle key={i} cx="50" cy="50" r={r} fill="none" stroke="rgba(141,110,99,0.4)" strokeWidth="1"/>)}
               <line x1="6" y1="50" x2="94" y2="50" stroke={GRN} strokeWidth="1.5" strokeDasharray="3,2"/>
-              <text x="50" y="54" fill={GRN} fontSize="10" textAnchor="middle" fontWeight="bold">{result.diam}m</text>
+              <text x="50" y="54" fill={GRN} fontSize="10" textAnchor="middle" fontWeight="bold">{result.diam}cm</text>
             </svg>
           </div>
           <p style={{ fontSize:11, color:"#2d6a4f", margin:"0 0 2px", letterSpacing:2 }}>幹周り</p>
@@ -656,8 +657,7 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
           <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
             <div style={{ background:"rgba(45,106,79,0.1)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:12, padding:"10px 16px" }}>
               <p style={{ fontSize:11, color:"#5a8c6a", margin:"0 0 2px" }}>幹の直径</p>
-              <p style={{ fontSize:24, fontWeight:"bold", color:"#2d6a4f", margin:0 }}>{result.diam} m</p>
-              <p style={{ fontSize:11, color:"#5a8c6a", margin:0 }}>{(result.diam*100).toFixed(0)} cm</p>
+              <p style={{ fontSize:24, fontWeight:"bold", color:"#2d6a4f", margin:0 }}>{result.diam} cm</p>
             </div>
             <div style={{ background:"rgba(45,106,79,0.1)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:12, padding:"10px 16px" }}>
               <p style={{ fontSize:11, color:"#5a8c6a", margin:"0 0 2px" }}>太さの目安</p>
@@ -668,7 +668,7 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
           </div>
         </div>
         <div style={{ ...CARD, padding:"14px 16px" }}>
-          {[["水平距離",`${result.d} m`],["幹左端",`${result.leftDeg}°`],["幹右端",`${result.rightDeg}°`],["角度合計",`${(Math.abs(result.leftDeg)+Math.abs(result.rightDeg)).toFixed(1)}°`],["幹直径",`${result.diam} m（${(result.diam*100).toFixed(0)} cm）`]].map(([l,v],i,a)=>(
+          {[["水平距離",`${result.d} m`],["幹左端",`${result.leftDeg}°`],["幹右端",`${result.rightDeg}°`],["角度合計",`${(Math.abs(result.leftDeg)+Math.abs(result.rightDeg)).toFixed(1)}°`],["幹直径",`${result.diam} cm`]].map(([l,v],i,a)=>(
             <div key={l} style={{ display:"flex", justifyContent:"space-between", paddingBottom:i<a.length-1?7:0, marginBottom:i<a.length-1?7:0, borderBottom:i<a.length-1?"1px solid rgba(126,203,161,0.1)":"none" }}>
               <span style={{ fontSize:11, color:"#5a9070" }}>{l}</span><span style={{ fontSize:13, color:"#1a3a2a" }}>{v}</span>
             </div>
@@ -704,6 +704,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
   const [search, setSearch] = useState("");
   const [showPdf, setShowPdf] = useState(false);
   const fileRef = useRef();
+  const detailPhotoRef = useRef();
   const [photo, setPhoto] = useState(null);
   const [name, setName] = useState(""); const [species, setSpecies] = useState("");
   const [location, setLocation] = useState(""); const [note, setNote] = useState("");
@@ -912,7 +913,31 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
             <button onClick={()=>doDelete(cur.id)} style={{ fontSize:12, color:"#ff8080", background:"rgba(220,50,50,0.1)", border:"1px solid rgba(220,50,50,0.4)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontFamily:"inherit" }}>🗑️</button>
           </div>
         </div>
-        {cur.photo&&<div style={{ borderRadius:14, overflow:"hidden", marginBottom:12 }}><img src={cur.photo} alt={cur.name} style={{ width:"100%", maxHeight:240, objectFit:"cover", display:"block" }}/></div>}
+        {/* 詳細画面の写真エリア */}
+        <input ref={detailPhotoRef} type="file" accept="image/*" capture="environment" style={{ display:"none" }}
+          onChange={e => {
+            const f = e.target.files[0]; if (!f) return;
+            const r = new FileReader();
+            r.onload = ev => {
+              const updated = { ...cur, photo: ev.target.result, updatedAt: today() };
+              onUpdate(trees.map(t => t.id === cur.id ? updated : t));
+              setSelected(updated);
+            };
+            r.readAsDataURL(f);
+          }} />
+        {cur.photo
+          ? <div style={{ position:"relative", borderRadius:14, overflow:"hidden", marginBottom:12 }}>
+              <img src={cur.photo} alt={cur.name} style={{ width:"100%", maxHeight:240, objectFit:"cover", display:"block" }}/>
+              <button onClick={() => detailPhotoRef.current.click()}
+                style={{ position:"absolute", bottom:10, right:10, background:"rgba(0,0,0,0.55)", border:"1px solid rgba(255,255,255,0.4)", borderRadius:8, color:"#fff", fontSize:12, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit" }}>
+                📷 写真を変更
+              </button>
+            </div>
+          : <button onClick={() => detailPhotoRef.current.click()}
+              style={{ width:"100%", padding:"22px", background:"rgba(45,106,79,0.06)", border:"2px dashed rgba(45,106,79,0.3)", borderRadius:14, color:"#5a8c6a", fontSize:14, cursor:"pointer", fontFamily:"inherit", textAlign:"center", marginBottom:12, display:"block" }}>
+              📷　写真を追加する
+            </button>
+        }
         <div style={CARD}>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
             {cur.species&&<span style={{ fontSize:12, background:"rgba(45,106,79,0.12)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:20, padding:"3px 12px", color:"#2d6a4f" }}>{cur.species}</span>}

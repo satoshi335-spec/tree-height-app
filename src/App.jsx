@@ -9,6 +9,13 @@ function calcHeight2(dist, topDeg, botDeg, eyeH) {
 function calcSpread(dist, leftDeg, rightDeg) {
   return +(dist * (Math.tan(Math.abs(leftDeg) * Math.PI / 180) + Math.tan(Math.abs(rightDeg) * Math.PI / 180))).toFixed(1);
 }
+
+// 幹周り: 直径=距離×(tan左+tan右)、幹周り=直径×π
+function calcTrunk(dist, leftDeg, rightDeg) {
+  const diam = +(dist * (Math.tan(Math.abs(leftDeg) * Math.PI / 180) + Math.tan(Math.abs(rightDeg) * Math.PI / 180))).toFixed(2);
+  const circ = +(diam * Math.PI).toFixed(1);
+  return { diam, circ };
+}
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function today() { const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }
 function loadProfile() { try { return JSON.parse(localStorage.getItem("fs_profile") || "{}"); } catch { return {}; } }
@@ -16,6 +23,18 @@ function saveProfile(o) { try { localStorage.setItem("fs_profile", JSON.stringif
 function loadTrees() { try { return JSON.parse(localStorage.getItem("fs_trees") || "[]"); } catch { return []; } }
 function saveTrees(t) { try { localStorage.setItem("fs_trees", JSON.stringify(t)); } catch {} }
 
+
+// GPS取得
+function getGPS() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject("非対応"); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }),
+      e => reject(e.message),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
 // ================================================================
 // STYLES
 // ================================================================
@@ -30,6 +49,18 @@ const GHO = { width: "100%", padding: "11px", background: "transparent", border:
 const TAB = (on) => ({ flex: 1, padding: "9px 6px", borderRadius: 8, cursor: "pointer", fontSize: 12, background: on ? "rgba(126,203,161,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${on ? GRN : "rgba(126,203,161,0.2)"}`, color: on ? GRN : "#4a9070", fontFamily: "inherit" });
 const SML = (c) => ({ fontSize: 11, color: c, background: "none", border: `1px solid ${c}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit", marginTop: 6 });
 
+// 樹種別年間成長量（幹周りcm/年）
+const GROWTH_RATE = {
+  "クスノキ": 3.5, "ケヤキ": 2.5, "イチョウ": 2.0,
+  "サクラ": 3.0, "マツ": 1.5, "スギ": 2.0,
+  "ヒノキ": 1.8, "プラタナス": 4.0, "メタセコイア": 4.0,
+  "ヒマラヤスギ": 3.5, "シラカシ": 2.5, "トウカエデ": 2.8,
+  "その他": 2.5,
+};
+function estimateAge(trunkCm, species) {
+  const rate = GROWTH_RATE[species] || 2.5;
+  return Math.round(trunkCm / rate);
+}
 const TREE_TYPES = ["クスノキ","ケヤキ","イチョウ","サクラ","マツ","スギ","ヒノキ","プラタナス","メタセコイア","ヒマラヤスギ","シラカシ","トウカエデ","その他"];
 
 // ================================================================
@@ -128,8 +159,7 @@ function CameraView({ videoRef, cameraOn, sensorOn, shown, lock1, lock2, label1,
       {sensorOn && <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
         {isVertical
           ? <div style={{ position: "absolute", top: "50%", left: "8%", right: "8%", height: 1, background: "rgba(126,203,161,0.3)", transform: "translateY(-50%)" }} />
-          : <div style={{ position: "absolute", left: "50%", top: "8%", bottom: "8%", width: 1, background: "rgba(126,203,161,0.3)", transform: "translateX(-50%)" }} />
-        }
+          : <div style={{ position: "absolute", left: "50%", top: "8%", bottom: "8%", width: 1, background: "rgba(126,203,161,0.3)", transform: "translateX(-50%)" }} />}
         <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 44, height: 44 }}>
           <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, background: GRN, opacity: 0.85, transform: "translateY(-50%)" }} />
           <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, background: GRN, opacity: 0.85, transform: "translateX(-50%)" }} />
@@ -139,7 +169,7 @@ function CameraView({ videoRef, cameraOn, sensorOn, shown, lock1, lock2, label1,
           ? <div style={{ position: "absolute", top: `calc(50% + ${px}px)`, left: 0, right: 0, height: 2, background: color1, opacity: 0.8, transform: "translateY(-50%)" }}><span style={{ position: "absolute", right: 8, top: -20, fontSize: 10, color: color1, background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4 }}>{label1} {lock1 > 0 ? "+" : ""}{lock1}°</span></div>
           : <div style={{ position: "absolute", left: `calc(50% + ${px}px)`, top: 0, bottom: 0, width: 2, background: color1, opacity: 0.8, transform: "translateX(-50%)" }}><span style={{ position: "absolute", top: 10, left: 6, fontSize: 10, color: color1, background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{label1} {lock1}°</span></div>; })()}
         {lock2 != null && (() => { const px = Math.round((shown - lock2)*3); return isVertical
-          ? <div style={{ position: "absolute", top: `calc(50% + ${px}px)`, left: 0, right: 0, height: 2, background: color2, opacity: 0.8, transform: "translateY(-50%)" }}><span style={{ position: "absolute", right: 8, top: -20, fontSize: 10, color: color2, background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4 }}>{label2} +{lock2}°</span></div>
+          ? <div style={{ position: "absolute", top: `calc(50% + ${px}px)`, left: 0, right: 0, height: 2, background: color2, opacity: 0.8, transform: "translateY(-50%)" }}><span style={{ position: "absolute", right: 8, top: -20, fontSize: 10, color: color2, background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4 }}>{label2} {lock2 > 0 ? "+" : ""}{lock2}°</span></div>
           : <div style={{ position: "absolute", left: `calc(50% + ${px}px)`, top: 0, bottom: 0, width: 2, background: color2, opacity: 0.8, transform: "translateX(-50%)" }}><span style={{ position: "absolute", top: 28, left: 6, fontSize: 10, color: color2, background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{label2} {lock2}°</span></div>; })()}
         <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.65)", borderRadius: 8, padding: "6px 12px", textAlign: "center" }}>
           <p style={{ fontSize: 9, color: GRN, margin: 0 }}>現在の角度</p>
@@ -178,26 +208,21 @@ function LockButtons({ sensorOn, startAll, lock1, lock2, onLock1, onLock2, onRed
 }
 
 // ================================================================
-// SAVE TO CARTE MODAL
+// SAVE MODAL
 // ================================================================
 function SaveModal({ measurement, trees, onSave, onSkip }) {
-  const [mode, setMode] = useState("new"); // new | existing
-  const [name, setName] = useState("");
-  const [species, setSpecies] = useState("");
-  const [location, setLocation] = useState("");
-  const [selectedId, setSelectedId] = useState("");
-
+  const [mode, setMode] = useState("new");
+  const [name, setName] = useState(""); const [species, setSpecies] = useState("");
+  const [location, setLocation] = useState(""); const [selectedId, setSelectedId] = useState("");
   const doSave = () => {
     if (mode === "new") {
       if (!name.trim()) { alert("木の名前を入力してください"); return; }
-      const tree = { id: newId(), name: name.trim(), species, location, note: "", photo: null, measurements: measurement, createdAt: today(), updatedAt: today() };
-      onSave(tree, null);
+      onSave({ id: newId(), name: name.trim(), species, location, note: "", photo: null, measurements: measurement, createdAt: today(), updatedAt: today() }, null);
     } else {
       if (!selectedId) { alert("木を選択してください"); return; }
       onSave(null, selectedId);
     }
   };
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 440, background: "#1a2e3a", borderRadius: "20px 20px 0 0", padding: "20px 16px 40px", maxHeight: "80vh", overflowY: "auto" }}>
@@ -217,17 +242,126 @@ function SaveModal({ measurement, trees, onSave, onSkip }) {
           <span style={LBL}>場所・区画：</span>
           <input style={{ ...INP, marginBottom: 16, fontSize: 16 }} type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="例: A区画・正門横" />
         </>}
-        {mode === "existing" && <>
-          <span style={LBL}>木を選択：</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-            {trees.map(t => <button key={t.id} onClick={() => setSelectedId(t.id)} style={{ padding: "12px 14px", borderRadius: 10, background: selectedId===t.id ? "rgba(126,203,161,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${selectedId===t.id ? GRN : "rgba(126,203,161,0.2)"}`, color: "#e0f0ea", fontFamily: "inherit", textAlign: "left", cursor: "pointer" }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: "bold" }}>{t.name}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6aab7e" }}>{t.species} {t.location}</p>
-            </button>)}
-          </div>
-        </>}
+        {mode === "existing" && <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {trees.map(t => <button key={t.id} onClick={() => setSelectedId(t.id)} style={{ padding: "12px 14px", borderRadius: 10, background: selectedId===t.id ? "rgba(126,203,161,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${selectedId===t.id ? GRN : "rgba(126,203,161,0.2)"}`, color: "#e0f0ea", fontFamily: "inherit", textAlign: "left", cursor: "pointer" }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: "bold" }}>{t.name}</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6aab7e" }}>{t.species} {t.location}</p>
+          </button>)}
+        </div>}
         <button style={PRI} onClick={doSave}>💾 保存する</button>
-        <button style={GHO} onClick={onSkip}>スキップ（保存しない）</button>
+        <button style={GHO} onClick={onSkip}>スキップ</button>
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
+// PDF 出力
+// ================================================================
+function printPDF(targets) {
+  const rows = targets.map(t => {
+    const m = t.measurements || {};
+    return `
+      <div class="carte">
+        <div class="carte-header">
+          ${t.photo ? `<img src="${t.photo}" class="thumb" />` : '<div class="no-photo">🌳</div>'}
+          <div class="carte-info">
+            <h2>${t.name}</h2>
+            <div class="tags">
+              ${t.species ? `<span class="tag green">${t.species}</span>` : ""}
+              ${t.location ? `<span class="tag blue">${t.location}</span>` : ""}
+            </div>
+            <p class="date">登録：${t.createdAt}　更新：${t.updatedAt}</p>
+            ${t.note ? `<p class="note">${t.note}</p>` : ""}
+          </div>
+        </div>
+        <div class="meas-grid">
+          ${m.height ? `<div class="meas-item"><span class="meas-label">樹高</span><span class="meas-val">${m.height}<small>m</small></span></div>` : ""}
+          ${m.spread ? `<div class="meas-item"><span class="meas-label">枝張り</span><span class="meas-val">${m.spread}<small>m</small></span></div>` : ""}
+          ${m.trunk  ? `<div class="meas-item"><span class="meas-label">幹周り</span><span class="meas-val">${m.trunk}<small>cm</small></span></div>` : ""}
+          ${m.age    ? `<div class="meas-item"><span class="meas-label">推定樹齢</span><span class="meas-val">${m.age}<small>年</small></span></div>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"/>
+  <title>樹木測るくん 測定レポート</title>
+  <style>
+    body { font-family: 'Hiragino Mincho ProN', Georgia, serif; background: #fff; color: #1a2a1a; margin: 0; padding: 20px; }
+    h1 { font-size: 20px; color: #2d6a4f; border-bottom: 2px solid #2d6a4f; padding-bottom: 8px; margin-bottom: 4px; }
+    .meta { font-size: 11px; color: #888; margin-bottom: 24px; }
+    .carte { border: 1px solid #cde8d8; border-radius: 10px; padding: 16px; margin-bottom: 20px; page-break-inside: avoid; }
+    .carte-header { display: flex; gap: 14px; margin-bottom: 12px; }
+    .thumb { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; flex-shrink: 0; border: 1px solid #cde8d8; }
+    .no-photo { width: 100px; height: 100px; background: #f0f7f0; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 36px; flex-shrink: 0; }
+    .carte-info { flex: 1; }
+    .carte-info h2 { font-size: 18px; color: #1a3a2a; margin: 0 0 6px; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 5px; }
+    .tag { font-size: 11px; border-radius: 20px; padding: 2px 10px; }
+    .tag.green { background: #e8f5ee; color: #2d6a4f; border: 1px solid #b0d8c0; }
+    .tag.blue  { background: #e8f0f8; color: #2a4a6a; border: 1px solid #b0c8e0; }
+    .date { font-size: 11px; color: #888; margin: 0 0 4px; }
+    .note { font-size: 12px; color: #555; margin: 4px 0 0; line-height: 1.6; }
+    .meas-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+    .meas-item { background: #f0f7f0; border-radius: 8px; padding: 8px 14px; text-align: center; min-width: 72px; }
+    .meas-label { font-size: 10px; color: #666; display: block; margin-bottom: 2px; }
+    .meas-val { font-size: 22px; font-weight: bold; color: #2d6a4f; }
+    .meas-val small { font-size: 12px; font-weight: normal; color: #888; margin-left: 2px; }
+    @media print { body { padding: 0; } }
+  </style></head><body>
+  <h1>🌳 樹木測るくん 測定レポート</h1>
+  <p class="meta">出力日：${today()}　登録本数：${targets.length}本</p>
+  ${rows}
+  <p style="font-size:10px; color:#888; margin-top:28px; border-top:1px solid #e0e0e0; padding-top:12px; line-height:1.8;">
+    ※ 推定樹齢は幹周り÷樹種別年間成長量による参考値です。実際の樹齢は立地・気候・管理条件により大きく異なります。<br>
+    ※ 参考：国土技術政策総合研究所「公園樹木管理の高度化に関する研究」・日本緑化センター資料に基づく概算値。<br>
+    ※ 正確な樹齢は年輪調査など専門的な手法による確認を推奨します。
+  </p>
+  <script>window.onload = () => window.print();<\/script>
+  </body></html>`;
+
+  const w = window.open("", "_blank");
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
+// ================================================================
+// PDF MODAL（個別 or 選択）
+// ================================================================
+function PdfModal({ trees, onClose }) {
+  const [selected, setSelected] = useState(new Set(trees.map(t => t.id)));
+  const toggle = (id) => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
+  const allOn = selected.size === trees.length;
+  const targets = trees.filter(t => selected.has(t.id));
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 440, background: "#1a2e3a", borderRadius: "20px 20px 0 0", padding: "20px 16px 40px", maxHeight: "80vh", overflowY: "auto" }}>
+        <p style={{ fontSize: 16, color: GRN, fontWeight: "bold", marginBottom: 6, textAlign: "center" }}>📄 PDF出力</p>
+        <p style={{ fontSize: 12, color: "#6aab7e", textAlign: "center", marginBottom: 14 }}>出力する木を選んでください</p>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+          <button onClick={() => setSelected(new Set(trees.map(t => t.id)))} style={{ fontSize: 12, color: GRN, background: "rgba(126,203,161,0.1)", border: "1px solid rgba(126,203,161,0.3)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit" }}>全て選択</button>
+          <button onClick={() => setSelected(new Set())} style={{ fontSize: 12, color: "#a8d5b5", background: "rgba(255,255,255,0.05)", border: "1px solid #4a7c5a", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit" }}>全て解除</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {trees.map(t => (
+            <button key={t.id} onClick={() => toggle(t.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, background: selected.has(t.id) ? "rgba(126,203,161,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${selected.has(t.id) ? GRN : "rgba(126,203,161,0.2)"}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "#0a1a0a" }}>
+                {t.photo ? <img src={t.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🌳</div>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: 14, color: "#e0f0ea", fontWeight: "bold" }}>{t.name}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6aab7e" }}>{t.species} {t.location}</p>
+              </div>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: selected.has(t.id) ? GRN : "rgba(255,255,255,0.1)", border: `2px solid ${selected.has(t.id) ? GRN : "#4a7c5a"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#1a2a1a", flexShrink: 0 }}>
+                {selected.has(t.id) ? "✓" : ""}
+              </div>
+            </button>
+          ))}
+        </div>
+        <button style={{ ...PRI, background: targets.length > 0 ? "#2a4a1a" : "#1a2a1a", borderColor: targets.length > 0 ? GOLD : "#4a7c5a", color: targets.length > 0 ? GOLD : "#4a7c5a", cursor: targets.length > 0 ? "pointer" : "not-allowed" }}
+          onClick={() => { if (targets.length > 0) { printPDF(targets); onClose(); } }}>
+          📄　{targets.length}本のレポートを出力する
+        </button>
+        <button style={GHO} onClick={onClose}>キャンセル</button>
       </div>
     </div>
   );
@@ -247,14 +381,12 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
   const onOrient = useCallback(e => { if (e.beta==null) return; let v = +(e.beta-90).toFixed(1); v = Math.max(-89,Math.min(89,v)); liveRef.current=v; setLiveDeg(v); }, []);
   const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(onOrient);
   const shown = liveDeg??0; const canCalc = bot!==null&&top!==null&&!!dist&&!!eyeH;
-
-  const doCalc = () => { if (!canCalc) return; stopCamera(); const h = calcHeight2(parseFloat(dist),top,bot,parseFloat(eyeH)); setResult({ height: h, d: parseFloat(dist), e: parseFloat(eyeH), topDeg: top, botDeg: bot }); setPg(3); };
+  const doCalc = () => { if (!canCalc) return; stopCamera(); setResult({ height: calcHeight2(parseFloat(dist),top,bot,parseFloat(eyeH)), d: parseFloat(dist), e: parseFloat(eyeH), topDeg: top, botDeg: bot }); setPg(3); };
   const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLiveDeg(null); setBot(null); setTop(null); setResult(null); setShowSave(false); };
 
   return (
     <div>
       {pg>0&&pg<3&&<div style={{ display:"flex", gap:4, margin:"14px 0" }}>{["① 距離入力","② 角度測定","③ 結果"].map((l,i)=><div key={i} style={{ flex:1, textAlign:"center" }}><div style={{ height:3, borderRadius:2, background:i<pg?GRN:"rgba(126,203,161,0.2)", marginBottom:4 }}/><span style={{ fontSize:10, color:i<pg?GRN:"#4a9070" }}>{l}</span></div>)}</div>}
-
       {pg===0&&<div style={{ marginTop:12 }}>
         <div style={CARD}><p style={{ fontSize:12, color:GRN, textAlign:"center", marginBottom:10 }}>2点ロック方式（上下）</p>
           <svg viewBox="0 0 280 150" style={{ width:"100%", height:"auto", display:"block" }}>
@@ -275,13 +407,11 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
         <button style={PRI} onClick={() => setPg(1)}>📐　測定を開始する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
       </div>}
-
       {pg===1&&<div>
         <DistPanel bodyH={bodyH} setBodyH={setBodyH} eyeH={eyeH} setEyeH={setEyeH} dist={dist} setDist={setDist} distMode={distMode} setDistMode={setDistMode} stride={stride} setStride={setStride} walkCount={walkCount} setWalkCount={setWalkCount} showEyeH />
         <button style={PRI} onClick={() => setPg(2)}>次へ → 角度を測定する</button>
         <button style={GHO} onClick={() => setPg(0)}>← 戻る</button>
       </div>}
-
       {pg===2&&<div>
         <CameraView videoRef={videoRef} cameraOn={cameraOn} sensorOn={sensorOn} shown={shown} lock1={bot} lock2={top} label1="根元" label2="梢" color1={BLUE} color2={GOLD} isVertical />
         <LockButtons sensorOn={sensorOn} startAll={startAll} lock1={bot} lock2={top}
@@ -294,7 +424,6 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
         </button>
         <button style={GHO} onClick={() => { setPg(1); stopCamera(); }}>← 距離の入力に戻る</button>
       </div>}
-
       {pg===3&&result&&<div style={{ marginTop:8 }}>
         <div style={{ background:"linear-gradient(135deg,#1a3a2a99,#0a2a1a55)", border:"1px solid rgba(126,203,161,0.35)", borderRadius:20, padding:"24px 20px", textAlign:"center", marginBottom:14 }}>
           <div style={{ position:"relative", height:100, width:70, margin:"0 auto 12px" }}>
@@ -320,7 +449,7 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
         <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　カルテに保存する</button>
         <button style={PRI} onClick={reset}>📐　もう一度測定する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
-        {showSave && <SaveModal measurement={{ height: result.height+"" }} trees={trees} onSave={(newTree, existingId) => { onSaveTree(newTree, existingId, { height: result.height+"" }); setShowSave(false); }} onSkip={() => setShowSave(false)} />}
+        {showSave && <SaveModal measurement={{ height: result.height+"" }} trees={trees} onSave={(nt,eid) => { onSaveTree(nt,eid,{ height: result.height+"" }); setShowSave(false); }} onSkip={() => setShowSave(false)} />}
       </div>}
     </div>
   );
@@ -340,14 +469,12 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
   const onOrient = useCallback(e => { if (e.gamma==null) return; let v = +e.gamma.toFixed(1); v = Math.max(-89,Math.min(89,v)); gammaRef.current=v; setLiveGamma(v); }, []);
   const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(onOrient);
   const shown = liveGamma??0; const canCalc = left!==null&&right!==null&&!!dist;
-
   const doCalc = () => { if (!canCalc) return; stopCamera(); const s = calcSpread(parseFloat(dist),left,right); setResult({ spread:s, radius:+(s/2).toFixed(1), area:+(Math.PI*(s/2)*(s/2)).toFixed(1), d:parseFloat(dist), leftDeg:left, rightDeg:right }); setPg(3); };
   const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLiveGamma(null); setLeft(null); setRight(null); setResult(null); setShowSave(false); };
 
   return (
     <div>
       {pg>0&&pg<3&&<div style={{ display:"flex", gap:4, margin:"14px 0" }}>{["① 距離入力","② 角度測定","③ 結果"].map((l,i)=><div key={i} style={{ flex:1, textAlign:"center" }}><div style={{ height:3, borderRadius:2, background:i<pg?GRN:"rgba(126,203,161,0.2)", marginBottom:4 }}/><span style={{ fontSize:10, color:i<pg?GRN:"#4a9070" }}>{l}</span></div>)}</div>}
-
       {pg===0&&<div style={{ marginTop:12 }}>
         <div style={CARD}><p style={{ fontSize:12, color:GRN, textAlign:"center", marginBottom:10 }}>2点ロック方式（左右）</p>
           <svg viewBox="0 0 280 150" style={{ width:"100%", height:"auto", display:"block" }}>
@@ -370,13 +497,11 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
         <button style={PRI} onClick={() => setPg(1)}>🌿　測定を開始する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
       </div>}
-
       {pg===1&&<div>
         <DistPanel bodyH={bodyH} setBodyH={setBodyH} eyeH="" setEyeH={() => {}} dist={dist} setDist={setDist} distMode={distMode} setDistMode={setDistMode} stride={stride} setStride={setStride} walkCount={walkCount} setWalkCount={setWalkCount} showEyeH={false} />
         <button style={PRI} onClick={() => setPg(2)}>次へ → 角度を測定する</button>
         <button style={GHO} onClick={() => setPg(0)}>← 戻る</button>
       </div>}
-
       {pg===2&&<div>
         <CameraView videoRef={videoRef} cameraOn={cameraOn} sensorOn={sensorOn} shown={shown} lock1={left} lock2={right} label1="左端" label2="右端" color1={BLUE} color2={GOLD} isVertical={false} />
         <LockButtons sensorOn={sensorOn} startAll={startAll} lock1={left} lock2={right}
@@ -389,7 +514,6 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
         </button>
         <button style={GHO} onClick={() => { setPg(1); stopCamera(); }}>← 距離の入力に戻る</button>
       </div>}
-
       {pg===3&&result&&<div style={{ marginTop:8 }}>
         <div style={{ background:"linear-gradient(135deg,#1a3a2a99,#0a2a1a55)", border:"1px solid rgba(126,203,161,0.35)", borderRadius:20, padding:"24px 20px", textAlign:"center", marginBottom:14 }}>
           <p style={{ fontSize:11, color:GRN, margin:"0 0 2px", letterSpacing:2 }}>枝張り（直径）</p>
@@ -416,7 +540,144 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
         <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　カルテに保存する</button>
         <button style={PRI} onClick={reset}>🌿　もう一度測定する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
-        {showSave && <SaveModal measurement={{ spread: result.spread+"" }} trees={trees} onSave={(newTree, existingId) => { onSaveTree(newTree, existingId, { spread: result.spread+"" }); setShowSave(false); }} onSkip={() => setShowSave(false)} />}
+        {showSave && <SaveModal measurement={{ spread: result.spread+"" }} trees={trees} onSave={(nt,eid) => { onSaveTree(nt,eid,{ spread: result.spread+"" }); setShowSave(false); }} onSkip={() => setShowSave(false)} />}
+      </div>}
+    </div>
+  );
+}
+
+
+// ================================================================
+// TRUNK APP（幹周り測定）
+// ================================================================
+function TrunkApp({ prof, trees, onSaveTree, onBack }) {
+  const [pg, setPg] = useState(0);
+  const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
+  const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
+  const [distMode, setDistMode] = useState(0); const [liveGamma, setLiveGamma] = useState(null);
+  const [left, setLeft] = useState(null); const [right, setRight] = useState(null);
+  const [result, setResult] = useState(null); const [showSave, setShowSave] = useState(false);
+  const gammaRef = useRef(null);
+  const onOrient = useCallback(e => { if (e.gamma==null) return; let v = +e.gamma.toFixed(1); v = Math.max(-89,Math.min(89,v)); gammaRef.current=v; setLiveGamma(v); }, []);
+  const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(onOrient);
+  const shown = liveGamma??0; const canCalc = left!==null&&right!==null&&!!dist;
+  const doCalc = () => { if (!canCalc) return; stopCamera(); const r = calcTrunk(parseFloat(dist),left,right); setResult({ ...r, d:parseFloat(dist), leftDeg:left, rightDeg:right }); setPg(3); };
+  const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLiveGamma(null); setLeft(null); setRight(null); setResult(null); setShowSave(false); };
+
+  return (
+    <div>
+      {pg>0&&pg<3&&<div style={{ display:"flex", gap:4, margin:"14px 0" }}>{["① 距離入力","② 角度測定","③ 結果"].map((l,i)=><div key={i} style={{ flex:1, textAlign:"center" }}><div style={{ height:3, borderRadius:2, background:i<pg?GRN:"rgba(126,203,161,0.2)", marginBottom:4 }}/><span style={{ fontSize:10, color:i<pg?GRN:"#4a9070" }}>{l}</span></div>)}</div>}
+      {pg===0&&<div style={{ marginTop:12 }}>
+        <div style={CARD}><p style={{ fontSize:12, color:GRN, textAlign:"center", marginBottom:10 }}>2点ロック方式（幹の左右）</p>
+          <svg viewBox="0 0 280 150" style={{ width:"100%", height:"auto", display:"block" }}>
+            <line x1="20" y1="125" x2="260" y2="125" stroke="#4a9070" strokeWidth="1.5"/>
+            {/* 幹（太い） */}
+            <rect x="125" y="40" width="30" height="85" rx="4" fill="#5d4037" opacity="0.8"/>
+            <line x1="125" y1="40" x2="125" y2="125" stroke="#8d6e63" strokeWidth="1"/>
+            <line x1="155" y1="40" x2="155" y2="125" stroke="#8d6e63" strokeWidth="1"/>
+            {/* 幹左端 */}
+            <circle cx="125" cy="82" r="5" fill={BLUE}/>
+            {/* 幹右端 */}
+            <circle cx="155" cy="82" r="5" fill={GOLD}/>
+            {/* 人 */}
+            <circle cx="50" cy="96" r="7" fill={GRN} opacity="0.85"/>
+            <line x1="50" y1="103" x2="50" y2="125" stroke={GRN} strokeWidth="2"/>
+            {/* 視線 */}
+            <line x1="50" y1="96" x2="125" y2="82" stroke={BLUE} strokeWidth="1.5" strokeDasharray="5,3"/>
+            <line x1="50" y1="96" x2="155" y2="82" stroke={GOLD} strokeWidth="1.5" strokeDasharray="5,3"/>
+            <text x="68" y="85" fill={BLUE} fontSize="9">左角</text>
+            <text x="86" y="100" fill={GOLD} fontSize="9">右角</text>
+            {/* 距離 */}
+            <line x1="50" y1="137" x2="140" y2="137" stroke="#74b3ce" strokeWidth="1" strokeDasharray="4,3"/>
+            <text x="90" y="148" fill="#74b3ce" fontSize="9" textAnchor="middle">距離 d</text>
+            {/* 直径 */}
+            <line x1="125" y1="32" x2="155" y2="32" stroke="#a8d5b5" strokeWidth="1.5"/>
+            <text x="140" y="26" fill="#a8d5b5" fontSize="9" textAnchor="middle">直径</text>
+          </svg>
+          <p style={{ fontSize:11, color:"#a8d5b5", textAlign:"center", margin:"8px 0 0", lineHeight:1.8 }}>
+            木の正面に立ち幹の左端・右端をロック<br/>
+            直径 → 幹周り（×π）を計算
+          </p>
+        </div>
+        <div style={{ background:"rgba(255,209,102,0.08)", border:"1px solid rgba(255,209,102,0.2)", borderRadius:10, padding:"10px 14px", marginBottom:12 }}>
+          <p style={{ fontSize:12, color:GOLD, margin:0, lineHeight:1.7 }}>
+            💡 木から <strong>2〜5m</strong> 離れると測定しやすいです。<br/>
+            幹の中心の高さ（地上1.3m付近）に照準を合わせてください。
+          </p>
+        </div>
+        <button style={PRI} onClick={() => setPg(1)}>🌲　測定を開始する</button>
+        <button style={GHO} onClick={onBack}>← メニューに戻る</button>
+      </div>}
+      {pg===1&&<div>
+        <DistPanel bodyH={bodyH} setBodyH={setBodyH} eyeH="" setEyeH={() => {}} dist={dist} setDist={setDist} distMode={distMode} setDistMode={setDistMode} stride={stride} setStride={setStride} walkCount={walkCount} setWalkCount={setWalkCount} showEyeH={false} />
+        <div style={{ background:"rgba(255,209,102,0.08)", border:"1px solid rgba(255,209,102,0.2)", borderRadius:10, padding:"10px 14px", marginBottom:10 }}>
+          <p style={{ fontSize:12, color:GOLD, margin:0 }}>💡 幹周り測定は距離 <strong>2〜5m</strong> がおすすめです</p>
+        </div>
+        <button style={PRI} onClick={() => setPg(2)}>次へ → 角度を測定する</button>
+        <button style={GHO} onClick={() => setPg(0)}>← 戻る</button>
+      </div>}
+      {pg===2&&<div>
+        <CameraView videoRef={videoRef} cameraOn={cameraOn} sensorOn={sensorOn} shown={shown} lock1={left} lock2={right} label1="幹左" label2="幹右" color1={BLUE} color2={GOLD} isVertical={false} />
+        <LockButtons sensorOn={sensorOn} startAll={startAll} lock1={left} lock2={right}
+          onLock1={() => { if (gammaRef.current!=null) setLeft(+gammaRef.current.toFixed(1)); }}
+          onLock2={() => { if (gammaRef.current!=null) setRight(+gammaRef.current.toFixed(1)); }}
+          onRedo1={() => { setLeft(null); setRight(null); }} onRedo2={() => setRight(null)}
+          label1="幹左端" label2="幹右端" color1={BLUE} color2={GOLD} hint1="←幹の左端に向けて" hint2="→幹の右端に向けて" />
+        <button onClick={doCalc} style={{ ...PRI, background:canCalc?"#2a4a1a":"#1a2a1a", borderColor:canCalc?GOLD:"#4a7c5a", color:canCalc?GOLD:"#4a7c5a", cursor:canCalc?"pointer":"not-allowed" }}>
+          🌲　幹周りを計算する {!canCalc&&(left===null?"（左端をロック）":right===null?"（右端をロック）":"（距離を入力）")}
+        </button>
+        <button style={GHO} onClick={() => { setPg(1); stopCamera(); }}>← 距離の入力に戻る</button>
+      </div>}
+      {pg===3&&result&&<div style={{ marginTop:8 }}>
+        <div style={{ background:"linear-gradient(135deg,#1a3a2a99,#0a2a1a55)", border:"1px solid rgba(126,203,161,0.35)", borderRadius:20, padding:"24px 20px", textAlign:"center", marginBottom:14 }}>
+          {/* 幹断面ビジュアル */}
+          <div style={{ margin:"0 auto 14px", width:100, height:100, position:"relative" }}>
+            <svg viewBox="0 0 100 100" style={{ width:"100%", height:"auto" }}>
+              <circle cx="50" cy="50" r="44" fill="rgba(93,64,55,0.3)" stroke="#8d6e63" strokeWidth="2"/>
+              {[38,30,22,14,6].map((r,i)=><circle key={i} cx="50" cy="50" r={r} fill="none" stroke="rgba(141,110,99,0.4)" strokeWidth="1"/>)}
+              <line x1="6" y1="50" x2="94" y2="50" stroke={GRN} strokeWidth="1.5" strokeDasharray="3,2"/>
+              <text x="50" y="54" fill={GRN} fontSize="10" textAnchor="middle" fontWeight="bold">{result.diam}m</text>
+            </svg>
+          </div>
+          <p style={{ fontSize:11, color:GRN, margin:"0 0 2px", letterSpacing:2 }}>幹周り</p>
+          <p style={{ fontSize:64, fontWeight:"bold", color:"#e0f0ea", margin:0, lineHeight:1, letterSpacing:-3 }}>{result.circ}</p>
+          <p style={{ fontSize:18, color:GRN, margin:"4px 0 14px" }}>cm</p>
+          <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+            <div style={{ background:"rgba(126,203,161,0.12)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:12, padding:"10px 16px" }}>
+              <p style={{ fontSize:11, color:"#a8d5b5", margin:"0 0 2px" }}>幹の直径</p>
+              <p style={{ fontSize:24, fontWeight:"bold", color:GRN, margin:0 }}>{result.diam} m</p>
+              <p style={{ fontSize:11, color:"#4a7c5a", margin:0 }}>{(result.diam*100).toFixed(0)} cm</p>
+            </div>
+            <div style={{ background:"rgba(126,203,161,0.12)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:12, padding:"10px 16px" }}>
+              <p style={{ fontSize:11, color:"#a8d5b5", margin:"0 0 2px" }}>太さの目安</p>
+              <p style={{ fontSize:20, fontWeight:"bold", color:result.circ>=300?GOLD:GRN, margin:0 }}>
+                {result.circ>=500?"巨木":result.circ>=300?"大木":result.circ>=150?"成木":"若木"}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div style={{ ...CARD, padding:"14px 16px" }}>
+          {[["水平距離",`${result.d} m`],["幹左端",`${result.leftDeg}°`],["幹右端",`${result.rightDeg}°`],["角度合計",`${(Math.abs(result.leftDeg)+Math.abs(result.rightDeg)).toFixed(1)}°`],["幹直径",`${result.diam} m（${(result.diam*100).toFixed(0)} cm）`]].map(([l,v],i,a)=>(
+            <div key={l} style={{ display:"flex", justifyContent:"space-between", paddingBottom:i<a.length-1?7:0, marginBottom:i<a.length-1?7:0, borderBottom:i<a.length-1?"1px solid rgba(126,203,161,0.1)":"none" }}>
+              <span style={{ fontSize:11, color:"#4a9070" }}>{l}</span><span style={{ fontSize:13, color:"#e0f0ea" }}>{v}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ background:"rgba(255,193,7,0.07)", border:"1px solid rgba(255,193,7,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12 }}>
+          <p style={{ fontSize:11, color:"#ffc107", margin:0, lineHeight:1.7 }}>⚠️ 地上1.3mの高さで測定すると標準的な幹周りになります。</p>
+        </div>
+        <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　カルテに保存する</button>
+        <button style={PRI} onClick={reset}>🌲　もう一度測定する</button>
+        <button style={GHO} onClick={onBack}>← メニューに戻る</button>
+        {showSave && <SaveModal measurement={{ trunk: result.circ+"" }} trees={trees} onSave={(nt,eid,sel) => {
+          // 既存の木に追加する場合、樹種がわかれば樹齢も自動推定
+          const existTree = eid ? trees.find(t=>t.id===eid) : null;
+          const sp = existTree?.species || "";
+          const autoAge = sp ? estimateAge(result.circ, sp)+"" : "";
+          const meas = { trunk: result.circ+"", ...(autoAge ? { age: autoAge } : {}) };
+          onSaveTree(nt ? { ...nt, measurements:{ ...nt.measurements, trunk:result.circ+"" } } : null, eid, meas);
+          setShowSave(false);
+        }} onSkip={() => setShowSave(false)} />}
       </div>}
     </div>
   );
@@ -425,30 +686,32 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
 // ================================================================
 // CARTE APP
 // ================================================================
-function CarteApp({ trees, onUpdate, onBack }) {
-  const [view, setView] = useState("list");
-  const [selected, setSelected] = useState(null);
+function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, onMeasureTrunk, initialSelectedId }) {
+  const [view, setView] = useState(initialSelectedId ? "detail" : "list");
+  const [selected, setSelected] = useState(initialSelectedId ? trees.find(t=>t.id===initialSelectedId)||null : null);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
+  const [showPdf, setShowPdf] = useState(false);
   const fileRef = useRef();
   const [photo, setPhoto] = useState(null);
   const [name, setName] = useState(""); const [species, setSpecies] = useState("");
   const [location, setLocation] = useState(""); const [note, setNote] = useState("");
   const [height, setHeight] = useState(""); const [spread, setSpread] = useState("");
   const [trunk, setTrunk] = useState(""); const [age, setAge] = useState("");
+  const [ageAuto, setAgeAuto] = useState(false); // 自動推定フラグ
+  const [gps, setGps] = useState(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
-  const openNew = () => { setEditing(null); setPhoto(null); setName(""); setSpecies(""); setLocation(""); setNote(""); setHeight(""); setSpread(""); setTrunk(""); setAge(""); setView("form"); };
-  const openEdit = (t) => { setEditing(t); setPhoto(t.photo); setName(t.name); setSpecies(t.species||""); setLocation(t.location||""); setNote(t.note||""); setHeight(t.measurements?.height||""); setSpread(t.measurements?.spread||""); setTrunk(t.measurements?.trunk||""); setAge(t.measurements?.age||""); setView("form"); };
-
+  const openNew = () => { setEditing(null); setPhoto(null); setName(""); setSpecies(""); setLocation(""); setNote(""); setHeight(""); setSpread(""); setTrunk(""); setAge(""); setAgeAuto(false); setGps(null); setView("form"); };
+  const openEdit = (t) => { setEditing(t); setPhoto(t.photo); setName(t.name); setSpecies(t.species||""); setLocation(t.location||""); setNote(t.note||""); setHeight(t.measurements?.height||""); setSpread(t.measurements?.spread||""); setTrunk(t.measurements?.trunk||""); setAge(t.measurements?.age||""); setAgeAuto(false); setGps(t.gps||null); setView("form"); };
   const doSave = () => {
     if (!name.trim()) { alert("木の名前を入力してください"); return; }
-    const t = { id: editing?.id||newId(), name:name.trim(), species, location, note, photo, measurements:{height,spread,trunk,age}, createdAt:editing?.createdAt||today(), updatedAt:today() };
-    const next = editing ? trees.map(x => x.id===t.id?t:x) : [t,...trees];
-    onUpdate(next); setSelected(t); setView("detail");
+    const t = { id: editing?.id||newId(), name:name.trim(), species, location, note, photo, gps, measurements:{height,spread,trunk,age}, createdAt:editing?.createdAt||today(), updatedAt:today() };
+    onUpdate(editing ? trees.map(x => x.id===t.id?t:x) : [t,...trees]);
+    setSelected(t); setView("detail");
   };
   const doDelete = (id) => { if (!window.confirm("削除しますか？")) return; onUpdate(trees.filter(t=>t.id!==id)); setSelected(null); setView("list"); };
   const onPhoto = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setPhoto(ev.target.result); r.readAsDataURL(f); };
-
   const filtered = trees.filter(t => !search||t.name.includes(search)||t.species?.includes(search)||t.location?.includes(search));
   const cur = selected && trees.find(t=>t.id===selected.id);
 
@@ -456,26 +719,47 @@ function CarteApp({ trees, onUpdate, onBack }) {
     <div>
       {/* LIST */}
       {view==="list"&&<>
-        <div style={{ display:"flex", alignItems:"center", gap:12, paddingTop:8, marginBottom:14 }}>
-          <button onClick={onBack} style={{ background:"none", border:"none", color:GRN, fontSize:22, cursor:"pointer", padding:0 }}>‹</button>
-          <h2 style={{ fontSize:17, color:GRN, margin:0 }}>樹木カルテ一覧</h2>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingTop:8, marginBottom:14 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <button onClick={onBack} style={{ background:"none", border:"none", color:GRN, fontSize:22, cursor:"pointer", padding:0 }}>‹</button>
+            <h2 style={{ fontSize:17, color:GRN, margin:0 }}>樹木カルテ一覧</h2>
+          </div>
+          {trees.length>0&&<button onClick={() => setShowPdf(true)} style={{ fontSize:12, color:GOLD, background:"rgba(255,209,102,0.1)", border:`1px solid rgba(255,209,102,0.35)`, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit" }}>📄 PDF出力</button>}
         </div>
-        {trees.length>0&&<div style={{ display:"flex", gap:8, marginBottom:14 }}>
-          {[["登録",`${trees.length}本`,GRN],["測定済",`${trees.filter(t=>t.measurements?.height).length}本`,GOLD],["写真",`${trees.filter(t=>t.photo).length}本`,BLUE]].map(([l,v,c])=>(
-            <div key={l} style={{ flex:1, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(126,203,161,0.2)", borderRadius:10, padding:"8px", textAlign:"center" }}>
-              <p style={{ fontSize:10, color:"#a8d5b5", margin:"0 0 2px" }}>{l}</p>
-              <p style={{ fontSize:18, fontWeight:"bold", color:c, margin:0 }}>{v}</p>
-            </div>
-          ))}
-        </div>}
+
+        {/* サムネグリッド統計 */}
+        {trees.length>0&&<>
+          <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+            {[["登録",`${trees.length}本`,GRN],["測定済",`${trees.filter(t=>t.measurements?.height).length}本`,GOLD],["写真",`${trees.filter(t=>t.photo).length}本`,BLUE]].map(([l,v,c])=>(
+              <div key={l} style={{ flex:1, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(126,203,161,0.2)", borderRadius:10, padding:"8px", textAlign:"center" }}>
+                <p style={{ fontSize:10, color:"#a8d5b5", margin:"0 0 2px" }}>{l}</p>
+                <p style={{ fontSize:18, fontWeight:"bold", color:c, margin:0 }}>{v}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* 写真サムネグリッド */}
+          {trees.filter(t=>t.photo).length>0&&<div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6, marginBottom:14 }}>
+            {trees.filter(t=>t.photo).slice(0,8).map(t=>(
+              <button key={t.id} onClick={() => { setSelected(t); setView("detail"); }} style={{ padding:0, border:"2px solid rgba(126,203,161,0.2)", borderRadius:8, overflow:"hidden", cursor:"pointer", aspectRatio:"1", background:"#0a1a0a", position:"relative" }}>
+                <img src={t.photo} alt={t.name} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+                <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.6)", padding:"3px 4px" }}>
+                  <p style={{ fontSize:9, color:"#e0f0ea", margin:0, overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis" }}>{t.name}</p>
+                </div>
+              </button>
+            ))}
+          </div>}
+        </>}
+
         {trees.length>0&&<div style={{ position:"relative", marginBottom:12 }}>
           <input style={{ ...INP, paddingLeft:36, fontSize:14 }} type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="名前・樹種・場所で検索..." />
           <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:16, color:"#4a7c5a" }}>🔍</span>
         </div>}
+
         {filtered.length>0 ? filtered.map(t=>(
           <button key={t.id} onClick={()=>{setSelected(t);setView("detail");}} style={{ width:"100%", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(126,203,161,0.2)", borderRadius:14, padding:0, cursor:"pointer", marginBottom:10, textAlign:"left", overflow:"hidden", fontFamily:"inherit" }}>
             <div style={{ display:"flex" }}>
-              <div style={{ width:88, minHeight:88, background:"#0a1a0a", flexShrink:0 }}>
+              <div style={{ width:90, minHeight:90, background:"#0a1a0a", flexShrink:0 }}>
                 {t.photo?<img src={t.photo} alt={t.name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>:<div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30 }}>🌳</div>}
               </div>
               <div style={{ flex:1, padding:"10px 12px" }}>
@@ -494,7 +778,9 @@ function CarteApp({ trees, onUpdate, onBack }) {
             </div>
           </button>
         )) : <div style={{ textAlign:"center", padding:"40px 20px" }}><p style={{ fontSize:36, marginBottom:12 }}>🌱</p><p style={{ fontSize:13, color:"#4a7c5a" }}>{search?"該当なし":"まだ登録されていません"}</p></div>}
+
         <button style={{ ...PRI, marginTop:8 }} onClick={openNew}>＋　新しい木を登録する</button>
+        {showPdf && <PdfModal trees={trees} onClose={() => setShowPdf(false)} />}
       </>}
 
       {/* FORM */}
@@ -512,21 +798,91 @@ function CarteApp({ trees, onUpdate, onBack }) {
           <p style={{ fontSize:13, color:GRN, marginBottom:12 }}>基本情報</p>
           <span style={LBL}>木の名前（必須）：</span><input style={{ ...INP, marginBottom:10, fontSize:16 }} type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="例: 正門のクスノキ" />
           <span style={LBL}>樹種：</span>
-          <select value={species} onChange={e=>setSpecies(e.target.value)} style={{ ...INP, marginBottom:10, fontSize:14, appearance:"none" }}>
+          <select value={species} onChange={e=>{
+            setSpecies(e.target.value);
+            if (trunk && e.target.value) { setAge(estimateAge(parseFloat(trunk), e.target.value)+""); setAgeAuto(true); }
+          }} style={{ ...INP, marginBottom:10, fontSize:14, appearance:"none" }}>
             <option value="">選択してください</option>
             {TREE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
           </select>
           <span style={LBL}>場所・区画：</span><input style={{ ...INP, marginBottom:10, fontSize:16 }} type="text" value={location} onChange={e=>setLocation(e.target.value)} placeholder="例: A区画・正門横" />
+
+          {/* GPS */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+            <span style={{ ...LBL, marginBottom:0, flex:1 }}>📍 位置情報：</span>
+            <button onClick={async () => {
+              setGpsLoading(true);
+              try { const g = await getGPS(); setGps(g); } catch(e) { alert("GPS取得失敗: " + e); }
+              setGpsLoading(false);
+            }} style={{ fontSize:12, color:GRN, background:"rgba(126,203,161,0.1)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:6, padding:"5px 12px", cursor:"pointer", fontFamily:"inherit" }}>
+              {gpsLoading ? "取得中..." : gps ? "📍 再取得" : "📍 現在地を取得"}
+            </button>
+          </div>
+          {gps ? (
+            <div style={{ background:"rgba(126,203,161,0.08)", border:"1px solid rgba(126,203,161,0.2)", borderRadius:8, padding:"8px 12px", marginBottom:10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <p style={{ fontSize:12, color:GRN, margin:0 }}>✅ {gps.lat}, {gps.lng}</p>
+              <button onClick={() => setGps(null)} style={{ fontSize:11, color:"#ff8080", background:"none", border:"none", cursor:"pointer" }}>✕</button>
+            </div>
+          ) : (
+            <p style={{ fontSize:11, color:"#4a7c5a", marginBottom:10 }}>※ 登録時に現在地を取得すると地図に表示できます</p>
+          )}
           <span style={LBL}>メモ：</span><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="樹形の特徴、管理状況など..." style={{ ...INP, resize:"vertical", minHeight:64, fontSize:14 }} />
         </div>
         <div style={CARD}>
           <p style={{ fontSize:13, color:GRN, marginBottom:12 }}>測定値 <span style={{ fontSize:10, color:"#4a9070" }}>（空欄でも可）</span></p>
-          {[["樹高",height,setHeight,"m"],["枝張り（直径）",spread,setSpread,"m"],["幹周り",trunk,setTrunk,"cm"],["推定樹齢",age,setAge,"年"]].map(([l,v,fn,u])=>(
-            <div key={l} style={{ marginBottom:12 }}>
-              <span style={LBL}>{l}：</span>
-              <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:22 }} type="number" value={v} onChange={e=>fn(e.target.value)} placeholder="未測定" /><span style={{ color:GRN, minWidth:28, fontSize:13 }}>{u}</span></div>
+
+          {/* 樹高 */}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <span style={{ ...LBL, marginBottom:0 }}>樹高：</span>
+              <button onClick={() => { doSave(); onMeasureHeight(editing?.id || null); }} style={{ fontSize:11, color:GRN, background:"rgba(126,203,161,0.1)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>📐 今すぐ測定</button>
             </div>
-          ))}
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={height} onChange={e=>setHeight(e.target.value)} placeholder="未測定" /><span style={{ color:GRN, minWidth:24, fontSize:13 }}>m</span></div>
+          </div>
+
+          {/* 枝張り */}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <span style={{ ...LBL, marginBottom:0 }}>枝張り（直径）：</span>
+              <button onClick={() => { doSave(); onMeasureSpread(editing?.id || null); }} style={{ fontSize:11, color:GRN, background:"rgba(126,203,161,0.1)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌿 今すぐ測定</button>
+            </div>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={spread} onChange={e=>setSpread(e.target.value)} placeholder="未測定" /><span style={{ color:GRN, minWidth:24, fontSize:13 }}>m</span></div>
+          </div>
+
+          {/* 幹周り */}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <span style={{ ...LBL, marginBottom:0 }}>幹周り：</span>
+              <button onClick={() => { doSave(); onMeasureTrunk(editing?.id || null); }} style={{ fontSize:11, color:GRN, background:"rgba(126,203,161,0.1)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌲 今すぐ測定</button>
+            </div>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={trunk} onChange={e=>{
+              setTrunk(e.target.value);
+              if (e.target.value && species) { setAge(estimateAge(parseFloat(e.target.value), species)+""); setAgeAuto(true); }
+              else if (!e.target.value) { if (ageAuto) setAge(""); setAgeAuto(false); }
+            }} placeholder="未測定" /><span style={{ color:GRN, minWidth:28, fontSize:13 }}>cm</span></div>
+          </div>
+          {/* 推定樹齢 */}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+              <span style={{ ...LBL, marginBottom:0 }}>推定樹齢：</span>
+              {ageAuto && <span style={{ fontSize:11, color:GOLD, background:"rgba(255,209,102,0.15)", border:"1px solid rgba(255,209,102,0.3)", borderRadius:20, padding:"2px 8px" }}>🤖 自動推定</span>}
+            </div>
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:4 }}>
+              <input style={{ ...INP, fontSize:20, borderColor: ageAuto ? "rgba(255,209,102,0.5)" : "rgba(126,203,161,0.4)" }}
+                type="number" value={age}
+                onChange={e=>{ setAge(e.target.value); setAgeAuto(false); }}
+                placeholder="未測定（直接入力可）" />
+              <span style={{ color:GRN, minWidth:28, fontSize:13 }}>年</span>
+            </div>
+            {ageAuto && trunk && species && <p style={{ fontSize:11, color:"#a8d5b5", margin:"0 0 6px" }}>
+              {trunk}cm ÷ {GROWTH_RATE[species]}cm/年（{species}）＝ 約{age}年
+            </p>}
+            <div style={{ background:"rgba(255,193,7,0.07)", border:"1px solid rgba(255,193,7,0.18)", borderRadius:8, padding:"8px 12px", marginTop:6 }}>
+              <p style={{ fontSize:11, color:"#ffc107", margin:0, lineHeight:1.7 }}>
+                ⚠️ 樹齢は参考値です。成長速度は立地・気候・管理条件により大きく異なります。年輪調査など専門的手法による確認を推奨します。
+              </p>
+            </div>
+          </div>
         </div>
         <button style={PRI} onClick={doSave}>💾　{editing?"保存する":"登録する"}</button>
         <button style={GHO} onClick={()=>setView(editing?"detail":"list")}>キャンセル</button>
@@ -540,8 +896,9 @@ function CarteApp({ trees, onUpdate, onBack }) {
             <h2 style={{ fontSize:17, color:GRN, margin:0 }}>{cur.name}</h2>
           </div>
           <div style={{ display:"flex", gap:8 }}>
+            <button onClick={()=>{ printPDF([cur]); }} style={{ fontSize:12, color:GOLD, background:"rgba(255,209,102,0.1)", border:`1px solid rgba(255,209,102,0.3)`, borderRadius:8, padding:"6px 10px", cursor:"pointer", fontFamily:"inherit" }}>📄</button>
             <button onClick={()=>openEdit(cur)} style={{ fontSize:12, color:GRN, background:"rgba(126,203,161,0.1)", border:"1px solid rgba(126,203,161,0.3)", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit" }}>✏️ 編集</button>
-            <button onClick={()=>doDelete(cur.id)} style={{ fontSize:12, color:"#ff8080", background:"rgba(220,50,50,0.1)", border:"1px solid rgba(220,50,50,0.4)", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit" }}>🗑️</button>
+            <button onClick={()=>doDelete(cur.id)} style={{ fontSize:12, color:"#ff8080", background:"rgba(220,50,50,0.1)", border:"1px solid rgba(220,50,50,0.4)", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontFamily:"inherit" }}>🗑️</button>
           </div>
         </div>
         {cur.photo&&<div style={{ borderRadius:14, overflow:"hidden", marginBottom:12 }}><img src={cur.photo} alt={cur.name} style={{ width:"100%", maxHeight:240, objectFit:"cover", display:"block" }}/></div>}
@@ -551,12 +908,13 @@ function CarteApp({ trees, onUpdate, onBack }) {
             {cur.location&&<span style={{ fontSize:12, background:"rgba(116,179,206,0.15)", border:"1px solid rgba(116,179,206,0.3)", borderRadius:20, padding:"3px 12px", color:BLUE }}>{cur.location}</span>}
           </div>
           {cur.note&&<p style={{ fontSize:13, color:"#a8d5b5", lineHeight:1.7, margin:"0 0 8px" }}>{cur.note}</p>}
+          {cur.gps && <p style={{ fontSize:11, color:GRN, margin:"0 0 4px" }}>📍 {cur.gps.lat}, {cur.gps.lng}</p>}
           <p style={{ fontSize:11, color:"#4a7c5a", margin:0 }}>登録：{cur.createdAt}　更新：{cur.updatedAt}</p>
         </div>
         {(cur.measurements?.height||cur.measurements?.spread||cur.measurements?.trunk||cur.measurements?.age)&&<div style={CARD}>
           <p style={{ fontSize:13, color:GRN, marginBottom:12 }}>測定値</p>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            {[["樹高",cur.measurements?.height,"m",GRN],["枝張り",cur.measurements?.spread,"m",GOLD],["幹周り",cur.measurements?.trunk,"cm",BLUE],["樹齢",cur.measurements?.age,"年","#a8d5b5"]].map(([l,v,u,c])=>v&&(
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom: cur.measurements?.age ? 10 : 0 }}>
+            {[["樹高",cur.measurements?.height,"m",GRN],["枝張り",cur.measurements?.spread,"m",GOLD],["幹周り",cur.measurements?.trunk,"cm",BLUE],["推定樹齢",cur.measurements?.age,"年","#a8d5b5"]].map(([l,v,u,c])=>v&&(
               <div key={l} style={{ flex:1, background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 12px", textAlign:"center", minWidth:68 }}>
                 <p style={{ fontSize:10, color:"#a8d5b5", margin:"0 0 2px" }}>{l}</p>
                 <p style={{ fontSize:22, fontWeight:"bold", color:c, margin:0, lineHeight:1 }}>{v}</p>
@@ -564,8 +922,156 @@ function CarteApp({ trees, onUpdate, onBack }) {
               </div>
             ))}
           </div>
+          {cur.measurements?.age && <div style={{ background:"rgba(255,193,7,0.07)", border:"1px solid rgba(255,193,7,0.18)", borderRadius:8, padding:"8px 12px" }}>
+            <p style={{ fontSize:11, color:"#ffc107", margin:0, lineHeight:1.7 }}>
+              ⚠️ 推定樹齢は参考値です。成長速度は立地・気候・管理条件により大きく異なります。
+            </p>
+          </div>}
         </div>}
+        {/* 詳細画面からも測定ボタン */}
+        <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
+          <button onClick={() => onMeasureHeight(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(116,179,206,0.1)", border:`1px solid ${BLUE}`, borderRadius:12, color:BLUE, fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>📐 樹高</button>
+          <button onClick={() => onMeasureSpread(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(255,209,102,0.1)", border:`1px solid ${GOLD}`, borderRadius:12, color:GOLD, fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>🌿 枝張り</button>
+          <button onClick={() => onMeasureTrunk(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(141,110,99,0.1)", border:"1px solid #8d6e63", borderRadius:12, color:"#c4a882", fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>🌲 幹周り</button>
+        </div>
       </>}
+    </div>
+  );
+}
+
+
+// ================================================================
+// MAP APP（地図表示）
+// ================================================================
+function MapApp({ trees, onSelectTree, onBack }) {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const treesWithGPS = trees.filter(t => t.gps?.lat && t.gps?.lng);
+
+  useEffect(() => {
+    // Leaflet CSS + JS を動的に読み込む
+    if (document.getElementById("leaflet-css")) { initMap(); return; }
+    const css = document.createElement("link");
+    css.id = "leaflet-css";
+    css.rel = "stylesheet";
+    css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(css);
+
+    const js = document.createElement("script");
+    js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    js.onload = () => initMap();
+    js.onerror = () => setLoadError(true);
+    document.head.appendChild(js);
+
+    return () => { if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; } };
+  }, []);
+
+  const initMap = () => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+    const L = window.L;
+    if (!L) return;
+
+    // 中心座標：GPSデータがあれば平均、なければ日本中心
+    let center = [36.5, 137.0]; let zoom = 5;
+    if (treesWithGPS.length > 0) {
+      const avgLat = treesWithGPS.reduce((s,t) => s + t.gps.lat, 0) / treesWithGPS.length;
+      const avgLng = treesWithGPS.reduce((s,t) => s + t.gps.lng, 0) / treesWithGPS.length;
+      center = [avgLat, avgLng]; zoom = treesWithGPS.length === 1 ? 14 : 10;
+    }
+
+    const map = L.map(mapRef.current, { center, zoom, zoomControl: true });
+    mapInstanceRef.current = map;
+
+    // OpenStreetMap タイル
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(map);
+
+    // カスタムアイコン
+    const treeIcon = L.divIcon({
+      className: "",
+      html: `<div style="background:#1a3a2a;border:2px solid #7ecba1;border-radius:50% 50% 50% 0;width:32px;height:32px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+               <span style="transform:rotate(45deg);font-size:16px;">🌳</span>
+             </div>`,
+      iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -34]
+    });
+
+    // マーカー追加
+    treesWithGPS.forEach(t => {
+      const popup = `
+        <div style="font-family:serif;min-width:160px;">
+          ${t.photo ? `<img src="${t.photo}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;display:block;">` : ""}
+          <b style="font-size:14px;color:#1a3a2a;">${t.name}</b><br>
+          ${t.species ? `<span style="font-size:11px;color:#2d6a4f;">🌿 ${t.species}</span><br>` : ""}
+          ${t.measurements?.height ? `<span style="font-size:11px;">樹高 <b>${t.measurements.height}m</b></span>　` : ""}
+          ${t.measurements?.trunk ? `<span style="font-size:11px;">幹周 <b>${t.measurements.trunk}cm</b></span>` : ""}
+          <br><button onclick="window.__treeSelect('${t.id}')"
+            style="margin-top:8px;padding:5px 12px;background:#1a3a2a;border:1px solid #7ecba1;border-radius:6px;color:#7ecba1;font-size:12px;cursor:pointer;width:100%;">
+            カルテを見る
+          </button>
+        </div>`;
+      L.marker([t.gps.lat, t.gps.lng], { icon: treeIcon })
+        .addTo(map)
+        .bindPopup(popup);
+    });
+
+    // グローバルコールバック
+    window.__treeSelect = (id) => { onSelectTree(id); };
+    setMapReady(true);
+  };
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", gap:10, paddingTop:8, marginBottom:12 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:GRN, fontSize:22, cursor:"pointer", padding:0 }}>‹</button>
+        <h2 style={{ fontSize:17, color:GRN, margin:0 }}>木の地図</h2>
+        <span style={{ fontSize:12, color:"#4a9070", marginLeft:4 }}>{treesWithGPS.length}本表示</span>
+      </div>
+
+      {loadError && (
+        <div style={{ ...CARD, textAlign:"center", padding:"24px" }}>
+          <p style={{ fontSize:13, color:"#ff8080" }}>地図の読み込みに失敗しました。<br/>ネットワーク接続を確認してください。</p>
+        </div>
+      )}
+
+      {!loadError && (
+        <div style={{ borderRadius:16, overflow:"hidden", marginBottom:12, border:"1px solid rgba(126,203,161,0.3)" }}>
+          <div ref={mapRef} style={{ height:400, width:"100%", background:"#1a2e3a" }} />
+        </div>
+      )}
+
+      {treesWithGPS.length === 0 && (
+        <div style={{ ...CARD, textAlign:"center", padding:"20px" }}>
+          <p style={{ fontSize:32, marginBottom:8 }}>📍</p>
+          <p style={{ fontSize:13, color:"#4a7c5a", lineHeight:1.8 }}>
+            GPS情報のある木がありません。<br/>
+            カルテ登録時に「📍 現在地を取得」を<br/>タップしてください。
+          </p>
+        </div>
+      )}
+
+      {treesWithGPS.length > 0 && (
+        <div style={CARD}>
+          <p style={{ fontSize:12, color:GRN, marginBottom:10 }}>📍 登録済みの木</p>
+          {treesWithGPS.map(t => (
+            <button key={t.id} onClick={() => onSelectTree(t.id)}
+              style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"8px 0", background:"none", border:"none", borderBottom:"1px solid rgba(126,203,161,0.1)", cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>
+              <span style={{ fontSize:18 }}>🌳</span>
+              <div style={{ flex:1 }}>
+                <p style={{ fontSize:13, color:"#e0f0ea", margin:0, fontWeight:"bold" }}>{t.name}</p>
+                <p style={{ fontSize:11, color:"#4a9070", margin:"2px 0 0" }}>
+                  {t.gps.lat.toFixed(4)}, {t.gps.lng.toFixed(4)}
+                  {t.species ? ` ・ ${t.species}` : ""}
+                </p>
+              </div>
+              <span style={{ color:"#4a7c5a", fontSize:14 }}>›</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -576,18 +1082,30 @@ function CarteApp({ trees, onUpdate, onBack }) {
 export default function App() {
   const [mode, setMode] = useState(null);
   const [trees, setTrees] = useState(loadTrees);
+  const [pendingTreeId, setPendingTreeId] = useState(null);
+  const [mapSelectedId, setMapSelectedId] = useState(null);
   const prof = loadProfile();
 
   const updateTrees = (next) => { setTrees(next); saveTrees(next); };
 
   const onSaveTree = (newTree, existingId, measurement) => {
+    let next;
     if (newTree) {
-      updateTrees([newTree, ...trees]);
+      next = [newTree, ...trees];
     } else {
-      updateTrees(trees.map(t => t.id === existingId ? { ...t, measurements: { ...t.measurements, ...measurement }, updatedAt: today() } : t));
+      next = trees.map(t => t.id === existingId ? { ...t, measurements: { ...t.measurements, ...measurement }, updatedAt: today() } : t);
     }
+    updateTrees(next);
     setMode("carte");
   };
+
+  // 地図から詳細へ
+  const onSelectTree = (id) => { setMapSelectedId(id); setMode("carte"); };
+
+  // カルテ編集画面から測定へ
+  const onMeasureHeight = (treeId) => { setPendingTreeId(treeId); setMode("height"); };
+  const onMeasureSpread = (treeId) => { setPendingTreeId(treeId); setMode("spread"); };
+  const onMeasureTrunk  = (treeId) => { setPendingTreeId(treeId); setMode("trunk"); };
 
   const menuBtn = (emoji, title, sub, badge, onClick) => (
     <button onClick={onClick} style={{ width:"100%", padding:"18px 16px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(126,203,161,0.22)", borderRadius:14, cursor:"pointer", marginBottom:10, display:"flex", alignItems:"center", gap:14, fontFamily:"inherit", textAlign:"left" }}>
@@ -606,22 +1124,26 @@ export default function App() {
       <div style={INNER}>
         <div style={{ textAlign:"center", paddingTop:32, paddingBottom:8 }}>
           <div style={{ fontSize:42 }}>🌳</div>
-          <h1 style={{ fontSize:21, fontWeight:"bold", letterSpacing:3, color:GRN, margin:"4px 0 0" }}>森林測定システム</h1>
-          <p style={{ fontSize:11, color:"#4a9070", letterSpacing:2, margin:"4px 0 0" }}>FOREST SCANNER</p>
+          <h1 style={{ fontSize:21, fontWeight:"bold", letterSpacing:2, color:GRN, margin:"4px 0 0" }}>樹木測るくん</h1>
+          <p style={{ fontSize:11, color:"#4a9070", letterSpacing:2, margin:"4px 0 0" }}>TREE MEASUREMENT SYSTEM</p>
         </div>
 
         {mode===null&&<div style={{ marginTop:20 }}>
           {trees.length>0&&<div style={{ background:"rgba(126,203,161,0.08)", border:"1px solid rgba(126,203,161,0.2)", borderRadius:10, padding:"10px 14px", marginBottom:16 }}>
             <p style={{ fontSize:12, color:GRN, margin:0 }}>📋 カルテ登録：{trees.length}本　測定済み：{trees.filter(t=>t.measurements?.height).length}本</p>
           </div>}
-          {menuBtn("📐","樹高を測定する","カメラで根元・梢を2点ロック",null,()=>setMode("height"))}
-          {menuBtn("🌿","枝張りを測定する","カメラで左端・右端を2点ロック",null,()=>setMode("spread"))}
-          {menuBtn("📋","樹木カルテ","写真・測定値を記録・管理",trees.length>0?`${trees.length}本`:null,()=>setMode("carte"))}
+          {menuBtn("📐","樹高を測定する","カメラで根元・梢を2点ロック",null,()=>{ setPendingTreeId(null); setMode("height"); })}
+          {menuBtn("🌿","枝張りを測定する","カメラで左端・右端を2点ロック",null,()=>{ setPendingTreeId(null); setMode("spread"); })}
+          {menuBtn("🌲","幹周りを測定する","カメラで幹の左右を2点ロック",null,()=>{ setPendingTreeId(null); setMode("trunk"); })}
+          {menuBtn("📋","樹木カルテ","写真・測定値を記録・管理・PDF出力",trees.length>0?`${trees.length}本`:null,()=>setMode("carte"))}
+          {menuBtn("🗺️","木の地図","記録した木の場所を地図で確認",trees.filter(t=>t.gps).length>0?`${trees.filter(t=>t.gps).length}本`:null,()=>setMode("map"))}
         </div>}
 
-        {mode==="height"&&<HeightApp prof={prof} trees={trees} onSaveTree={onSaveTree} onBack={()=>setMode(null)}/>}
-        {mode==="spread"&&<SpreadApp prof={prof} trees={trees} onSaveTree={onSaveTree} onBack={()=>setMode(null)}/>}
-        {mode==="carte"&&<CarteApp trees={trees} onUpdate={updateTrees} onBack={()=>setMode(null)}/>}
+        {mode==="height"&&<HeightApp prof={prof} trees={trees} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="spread"&&<SpreadApp prof={prof} trees={trees} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="trunk"&&<TrunkApp prof={prof} trees={trees} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="carte"&&<CarteApp trees={trees} onUpdate={updateTrees} onBack={()=>{ setMapSelectedId(null); setMode(null); }} onMeasureHeight={onMeasureHeight} onMeasureSpread={onMeasureSpread} onMeasureTrunk={onMeasureTrunk} initialSelectedId={mapSelectedId}/>}
+        {mode==="map"&&<MapApp trees={trees} onSelectTree={onSelectTree} onBack={()=>setMode(null)}/>}
       </div>
     </div>
   );

@@ -1,8 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// 2点ロック方式
-// 樹高 = 距離 × (tan(上角) - tan(下角)) + 目の高さ
-// ※下が負角の場合も対応
 function calcHeight2(dist, topDeg, botDeg, eyeH) {
   const top = Math.tan((topDeg * Math.PI) / 180);
   const bot = Math.tan((botDeg * Math.PI) / 180);
@@ -10,7 +7,7 @@ function calcHeight2(dist, topDeg, botDeg, eyeH) {
 }
 
 export default function App() {
-  const [page, setPage] = useState(0); // 0=intro 1=dist 2=measure 3=result
+  const [page, setPage] = useState(0);
   const [dist, setDist] = useState("");
   const [eyeH, setEyeH] = useState("1.5");
   const [bodyH, setBodyH] = useState("");
@@ -18,24 +15,30 @@ export default function App() {
   const [stride, setStride] = useState(null);
   const [distMode, setDistMode] = useState(0);
   const [liveDeg, setLiveDeg] = useState(null);
-  const [botLocked, setBotLocked] = useState(null); // 下（根元）ロック
-  const [topLocked, setTopLocked] = useState(null); // 上（梢）ロック
+  const [botLocked, setBotLocked] = useState(null);
+  const [topLocked, setTopLocked] = useState(null);
   const [sensorOn, setSensorOn] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
   const [result, setResult] = useState(null);
   const liveRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   const onOrient = useCallback((e) => {
     if (e.beta == null) return;
     let v = +(e.beta - 90).toFixed(1);
-    // -89〜89の範囲（下向きも負で表現）
     v = Math.max(-89, Math.min(89, v));
     liveRef.current = v;
     setLiveDeg(v);
   }, []);
 
-  useEffect(() => () => window.removeEventListener("deviceorientation", onOrient), [onOrient]);
+  useEffect(() => () => {
+    window.removeEventListener("deviceorientation", onOrient);
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+  }, [onOrient]);
 
-  const startSensor = async () => {
+  const startAll = async () => {
+    // センサー起動
     try {
       if (typeof DeviceOrientationEvent?.requestPermission === "function") {
         const r = await DeviceOrientationEvent.requestPermission();
@@ -43,7 +46,31 @@ export default function App() {
       }
       window.addEventListener("deviceorientation", onOrient);
       setSensorOn(true);
-    } catch { alert("センサーを起動できませんでした"); }
+    } catch { alert("センサーを起動できませんでした"); return; }
+
+    // カメラ起動
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setCameraOn(true);
+    } catch {
+      // カメラが使えなくてもセンサーだけで続行
+      setCameraOn(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraOn(false);
   };
 
   const calcStrideAndDist = () => {
@@ -72,12 +99,14 @@ export default function App() {
   const doCalc = () => {
     const d = parseFloat(dist), e = parseFloat(eyeH);
     if (!d || !e || botLocked == null || topLocked == null) return;
+    stopCamera();
     const h = calcHeight2(d, topLocked, botLocked, e);
     setResult({ h, d, e, topDeg: topLocked, botDeg: botLocked });
     setPage(3);
   };
 
   const reset = () => {
+    stopCamera();
     setPage(0); setDist(""); setEyeH("1.5"); setBodyH(""); setWalkCount("");
     setStride(null); setDistMode(0); setLiveDeg(null);
     setBotLocked(null); setTopLocked(null); setSensorOn(false); setResult(null);
@@ -122,50 +151,32 @@ export default function App() {
             <div style={box}>
               <p style={{ fontSize: 12, color: GRN, textAlign: "center", letterSpacing: 1, marginBottom: 14 }}>測定の仕組み（2点ロック方式）</p>
               <svg viewBox="0 0 280 160" style={{ width: "100%", height: "auto", display: "block" }}>
-                {/* 地面 */}
                 <line x1="20" y1="130" x2="260" y2="130" stroke="#4a9070" strokeWidth="1.5" />
-                {/* 木 */}
                 <line x1="220" y1="130" x2="220" y2="20" stroke={GRN} strokeWidth="3" />
                 <ellipse cx="220" cy="20" rx="22" ry="14" fill="#2d6a4f" opacity="0.85" />
-                {/* 人 */}
                 <circle cx="50" cy="107" r="7" fill={GRN} opacity="0.85" />
                 <line x1="50" y1="114" x2="50" y2="130" stroke={GRN} strokeWidth="2" />
-                {/* 上への視線（梢） */}
                 <line x1="50" y1="107" x2="220" y2="20" stroke="#ffd166" strokeWidth="1.5" strokeDasharray="5,3" />
-                {/* 下への視線（根元） */}
                 <line x1="50" y1="107" x2="220" y2="125" stroke="#74b3ce" strokeWidth="1.5" strokeDasharray="5,3" />
-                {/* 上角度弧 */}
                 <path d="M 78 107 A 28 28 0 0 1 68 85" fill="none" stroke="#ffd166" strokeWidth="1.5" />
                 <text x="84" y="98" fill="#ffd166" fontSize="9">上角</text>
-                {/* 下角度弧 */}
                 <path d="M 78 107 A 18 18 0 0 0 92 113" fill="none" stroke="#74b3ce" strokeWidth="1.5" />
                 <text x="86" y="122" fill="#74b3ce" fontSize="9">下角</text>
-                {/* 距離 */}
                 <line x1="50" y1="142" x2="220" y2="142" stroke="#74b3ce" strokeWidth="1" strokeDasharray="4,3" />
                 <text x="130" y="152" fill="#74b3ce" fontSize="9" textAnchor="middle">距離 d</text>
-                {/* 樹高 */}
                 <line x1="232" y1="20" x2="232" y2="130" stroke="#a8d5b5" strokeWidth="1" strokeDasharray="3,2" />
                 <text x="248" y="80" fill="#a8d5b5" fontSize="9">樹高</text>
               </svg>
               <p style={{ fontSize: 11, color: "#a8d5b5", textAlign: "center", margin: "10px 0 0", lineHeight: 1.8 }}>
-                ① 根元をロック → ② 梢をロック<br/>
-                2点の角度差から樹高を計算
+                ① 根元をロック → ② 梢をロック<br />2点の角度差から樹高を計算
               </p>
             </div>
-
             <div style={{ ...box, padding: "14px 16px" }}>
               <p style={{ fontSize: 12, color: GRN, margin: "0 0 8px" }}>測定手順</p>
-              {[
-                "① 木から10〜30m離れる",
-                "② 距離と身長を入力",
-                "③ カメラを根元に向けてロック",
-                "④ カメラを梢に向けてロック",
-                "⑤ 樹高を自動計算"
-              ].map((t, i) => (
+              {["① 木から10〜30m離れる", "② 距離と身長を入力", "③ カメラを根元に向けてロック", "④ カメラを梢に向けてロック", "⑤ 樹高を自動計算"].map((t, i) => (
                 <p key={i} style={{ fontSize: 12, color: "#a8d5b5", margin: "5px 0", lineHeight: 1.6 }}>{t}</p>
               ))}
             </div>
-
             <button style={primaryBtn} onClick={() => setPage(1)}>🌲　測定を開始する</button>
           </div>
         )}
@@ -226,7 +237,6 @@ export default function App() {
                 </>
               )}
             </div>
-
             <button style={primaryBtn} onClick={() => setPage(2)}>次へ → 角度を測定する</button>
             <button style={ghostBtn} onClick={reset}>← 最初に戻る</button>
           </div>
@@ -235,71 +245,122 @@ export default function App() {
         {/* ── MEASURE ── */}
         {page === 2 && (
           <div>
-            <div style={box}>
-              <p style={{ fontSize: 13, color: GRN, marginBottom: 4 }}>角度を測定する（2点ロック）</p>
-              <p style={{ fontSize: 11, color: "#a8d5b5", marginBottom: 16 }}>スマホのカメラを覗きながら根元→梢の順にロック</p>
+            {/* カメラ + 照準オーバーレイ */}
+            <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", marginBottom: 12, background: "#000", aspectRatio: "4/3" }}>
 
-              {/* センサー起動 */}
+              {/* カメラ映像 */}
+              <video
+                ref={videoRef}
+                autoPlay playsInline muted
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: cameraOn ? "block" : "none" }}
+              />
+
+              {/* カメラOFFのとき */}
+              {!cameraOn && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#0a1a0a" }}>
+                  <p style={{ color: "#4a7c5a", fontSize: 13, textAlign: "center" }}>📷<br />カメラ起動後に<br />映像が表示されます</p>
+                </div>
+              )}
+
+              {/* 照準線オーバーレイ */}
+              {sensorOn && (
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  {/* 水平線（中央） */}
+                  <div style={{ position: "absolute", top: "50%", left: "10%", right: "10%", height: 1, background: "rgba(126,203,161,0.4)", transform: "translateY(-50%)" }} />
+                  {/* 中央の十字 */}
+                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 40, height: 40 }}>
+                    <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, background: GRN, opacity: 0.8 }} />
+                    <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, background: GRN, opacity: 0.8 }} />
+                    <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 10, height: 10, borderRadius: "50%", background: GRN, opacity: 0.9 }} />
+                  </div>
+
+                  {/* ロックした根元ラインの表示 */}
+                  {botLocked != null && (() => {
+                    // 角度差をピクセルオフセットに変換（1度≒画面高さ/60）
+                    const offset = (shown - botLocked) * 3;
+                    const y = `calc(50% + ${offset}px)`;
+                    return <div style={{ position: "absolute", top: y, left: 0, right: 0, height: 2, background: "#74b3ce", opacity: 0.7, transform: "translateY(-50%)" }}>
+                      <span style={{ position: "absolute", right: 8, top: -18, fontSize: 10, color: "#74b3ce", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 4 }}>根元 {botLocked > 0 ? "+" : ""}{botLocked}°</span>
+                    </div>;
+                  })()}
+
+                  {/* ロックした梢ラインの表示 */}
+                  {topLocked != null && (() => {
+                    const offset = (shown - topLocked) * 3;
+                    const y = `calc(50% + ${offset}px)`;
+                    return <div style={{ position: "absolute", top: y, left: 0, right: 0, height: 2, background: "#ffd166", opacity: 0.7, transform: "translateY(-50%)" }}>
+                      <span style={{ position: "absolute", right: 8, top: -18, fontSize: 10, color: "#ffd166", background: "rgba(0,0,0,0.5)", padding: "2px 6px", borderRadius: 4 }}>梢 +{topLocked}°</span>
+                    </div>;
+                  })()}
+
+                  {/* 角度表示（右上） */}
+                  <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", borderRadius: 8, padding: "6px 12px", textAlign: "center" }}>
+                    <p style={{ fontSize: 9, color: GRN, margin: 0, letterSpacing: 1 }}>現在の角度</p>
+                    <p style={{ fontSize: 26, fontWeight: "bold", color: shown >= 0 ? GRN : "#74b3ce", margin: 0, lineHeight: 1 }}>
+                      {shown > 0 ? "+" : ""}{shown.toFixed(1)}°
+                    </p>
+                  </div>
+
+                  {/* ロック状態（左上） */}
+                  <div style={{ position: "absolute", top: 10, left: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ background: botLocked != null ? "rgba(116,179,206,0.85)" : "rgba(0,0,0,0.55)", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: botLocked != null ? "#fff" : "#888" }}>
+                      {botLocked != null ? `✅ 根元 ${botLocked > 0 ? "+" : ""}${botLocked}°` : "① 根元未ロック"}
+                    </div>
+                    <div style={{ background: topLocked != null ? "rgba(255,209,102,0.85)" : "rgba(0,0,0,0.55)", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: topLocked != null ? "#000" : "#888" }}>
+                      {topLocked != null ? `✅ 梢 +${topLocked}°` : "② 梢未ロック"}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* コントロール */}
+            <div style={box}>
               {!sensorOn && (
-                <button style={primaryBtn} onClick={startSensor}>📱　センサーを起動する</button>
+                <button style={primaryBtn} onClick={startAll}>📱　カメラ＆センサーを起動する</button>
               )}
 
               {sensorOn && (
-                <>
-                  {/* 現在角度の大表示 */}
-                  <div style={{ textAlign: "center", background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: "16px", marginBottom: 16 }}>
-                    <p style={{ fontSize: 11, color: "#4a9070", margin: "0 0 4px", letterSpacing: 1 }}>📡 現在の角度</p>
-                    <p style={{ fontSize: 64, fontWeight: "bold", color: shown >= 0 ? GRN : "#74b3ce", margin: 0, lineHeight: 1, letterSpacing: -2 }}>
-                      {shown > 0 ? "+" : ""}{shown.toFixed(1)}
-                    </p>
-                    <p style={{ fontSize: 13, color: "#a8d5b5", margin: "4px 0 0" }}>度　{shown > 5 ? "↑ 上向き" : shown < -5 ? "↓ 下向き" : "→ ほぼ水平"}</p>
-                  </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {/* 根元ロック */}
+                  <button
+                    onClick={lockBottom}
+                    disabled={botLocked != null}
+                    style={{
+                      flex: 1, padding: "16px 8px", borderRadius: 12, cursor: botLocked != null ? "default" : "pointer",
+                      background: botLocked != null ? "rgba(116,179,206,0.25)" : "rgba(116,179,206,0.1)",
+                      border: `2px solid ${botLocked != null ? "#74b3ce" : "rgba(116,179,206,0.4)"}`,
+                      color: botLocked != null ? "#74b3ce" : "#a8d5b5", fontFamily: "inherit", textAlign: "center"
+                    }}>
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>🔒</div>
+                    <div style={{ fontSize: 13, fontWeight: "bold" }}>{botLocked != null ? "根元済" : "根元をロック"}</div>
+                    {botLocked != null && <div style={{ fontSize: 11, marginTop: 2 }}>{botLocked > 0 ? "+" : ""}{botLocked}°</div>}
+                    {botLocked != null && <button onClick={e => { e.stopPropagation(); setBotLocked(null); setTopLocked(null); }}
+                      style={{ fontSize: 10, color: "#74b3ce", background: "none", border: "none", cursor: "pointer", marginTop: 4, textDecoration: "underline" }}>
+                      やり直す
+                    </button>}
+                  </button>
 
-                  {/* ステップ1: 下をロック */}
-                  <div style={{ background: botLocked != null ? "rgba(116,179,206,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${botLocked != null ? "rgba(116,179,206,0.5)" : "rgba(126,203,161,0.2)"}`, borderRadius: 12, padding: "14px", marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <div>
-                        <p style={{ fontSize: 13, color: botLocked != null ? "#74b3ce" : "#a8d5b5", margin: 0, fontWeight: "bold" }}>
-                          {botLocked != null ? "✅ 根元ロック済み" : "① 根元をロック"}
-                        </p>
-                        <p style={{ fontSize: 11, color: "#4a7c5a", margin: "4px 0 0" }}>
-                          {botLocked != null ? `${botLocked > 0 ? "+" : ""}${botLocked}°` : "カメラを木の根元に向けてロック"}
-                        </p>
-                      </div>
-                      {botLocked != null
-                        ? <button onClick={() => setBotLocked(null)} style={{ fontSize: 11, color: "#74b3ce", background: "rgba(116,179,206,0.1)", border: "1px solid rgba(116,179,206,0.3)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontFamily: "inherit" }}>やり直す</button>
-                        : <button onClick={lockBottom} style={{ padding: "10px 16px", background: "rgba(116,179,206,0.2)", border: "1px solid rgba(116,179,206,0.5)", borderRadius: 10, color: "#74b3ce", fontSize: 14, cursor: "pointer", fontFamily: "inherit", fontWeight: "bold" }}>🔒 ロック</button>
-                      }
-                    </div>
-                  </div>
-
-                  {/* ステップ2: 上をロック */}
-                  <div style={{ background: topLocked != null ? "rgba(255,209,102,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${topLocked != null ? "rgba(255,209,102,0.5)" : "rgba(126,203,161,0.2)"}`, borderRadius: 12, padding: "14px", marginBottom: 10, opacity: botLocked == null ? 0.4 : 1 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <div>
-                        <p style={{ fontSize: 13, color: topLocked != null ? "#ffd166" : "#a8d5b5", margin: 0, fontWeight: "bold" }}>
-                          {topLocked != null ? "✅ 梢ロック済み" : "② 梢をロック"}
-                        </p>
-                        <p style={{ fontSize: 11, color: "#4a7c5a", margin: "4px 0 0" }}>
-                          {topLocked != null ? `+${topLocked}°` : "次にカメラを木のてっぺんに向けてロック"}
-                        </p>
-                      </div>
-                      {topLocked != null
-                        ? <button onClick={() => setTopLocked(null)} style={{ fontSize: 11, color: "#ffd166", background: "rgba(255,209,102,0.1)", border: "1px solid rgba(255,209,102,0.3)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontFamily: "inherit" }}>やり直す</button>
-                        : <button onClick={lockTop} disabled={botLocked == null} style={{ padding: "10px 16px", background: "rgba(255,209,102,0.2)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 10, color: "#ffd166", fontSize: 14, cursor: botLocked == null ? "not-allowed" : "pointer", fontFamily: "inherit", fontWeight: "bold" }}>🔒 ロック</button>
-                      }
-                    </div>
-                  </div>
-
-                  {/* 角度差の確認 */}
-                  {botLocked != null && topLocked != null && (
-                    <div style={{ background: "rgba(126,203,161,0.1)", border: "1px solid rgba(126,203,161,0.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 10, textAlign: "center" }}>
-                      <p style={{ fontSize: 12, color: GRN, margin: 0 }}>
-                        角度差：{(topLocked - botLocked).toFixed(1)}°（根元 {botLocked > 0 ? "+" : ""}{botLocked}° → 梢 +{topLocked}°）
-                      </p>
-                    </div>
-                  )}
-                </>
+                  {/* 梢ロック */}
+                  <button
+                    onClick={lockTop}
+                    disabled={botLocked == null || topLocked != null}
+                    style={{
+                      flex: 1, padding: "16px 8px", borderRadius: 12,
+                      cursor: (botLocked == null || topLocked != null) ? "default" : "pointer",
+                      background: topLocked != null ? "rgba(255,209,102,0.25)" : botLocked != null ? "rgba(255,209,102,0.1)" : "rgba(255,255,255,0.03)",
+                      border: `2px solid ${topLocked != null ? "#ffd166" : botLocked != null ? "rgba(255,209,102,0.4)" : "rgba(255,255,255,0.1)"}`,
+                      color: topLocked != null ? "#ffd166" : botLocked != null ? "#d4b060" : "#4a7c5a", fontFamily: "inherit", textAlign: "center"
+                    }}>
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>🔒</div>
+                    <div style={{ fontSize: 13, fontWeight: "bold" }}>{topLocked != null ? "梢済" : "梢をロック"}</div>
+                    {topLocked != null && <div style={{ fontSize: 11, marginTop: 2 }}>+{topLocked}°</div>}
+                    {topLocked != null && <button onClick={e => { e.stopPropagation(); setTopLocked(null); }}
+                      style={{ fontSize: 10, color: "#ffd166", background: "none", border: "none", cursor: "pointer", marginTop: 4, textDecoration: "underline" }}>
+                      やり直す
+                    </button>}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -308,7 +369,7 @@ export default function App() {
                 🌲　樹高を計算する
               </button>
             )}
-            <button style={ghostBtn} onClick={() => setPage(1)}>← 距離の入力に戻る</button>
+            <button style={ghostBtn} onClick={() => { setPage(1); stopCamera(); }}>← 距離の入力に戻る</button>
           </div>
         )}
 
@@ -333,13 +394,7 @@ export default function App() {
             </div>
 
             <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 14, border: "1px solid rgba(126,203,161,0.15)", padding: "14px 18px", marginBottom: 12 }}>
-              {[
-                ["水平距離", `${result.d} m`],
-                ["根元の角度", `${result.botDeg > 0 ? "+" : ""}${result.botDeg}°`],
-                ["梢の角度", `+${result.topDeg}°`],
-                ["角度差", `${(result.topDeg - result.botDeg).toFixed(1)}°`],
-                ["目の高さ", `${result.e} m`],
-              ].map(([l, v], i, arr) => (
+              {[["水平距離", `${result.d} m`], ["根元の角度", `${result.botDeg > 0 ? "+" : ""}${result.botDeg}°`], ["梢の角度", `+${result.topDeg}°`], ["角度差", `${(result.topDeg - result.botDeg).toFixed(1)}°`], ["目の高さ", `${result.e} m`]].map(([l, v], i, arr) => (
                 <div key={l} style={{ display: "flex", justifyContent: "space-between", paddingBottom: i < arr.length - 1 ? 8 : 0, marginBottom: i < arr.length - 1 ? 8 : 0, borderBottom: i < arr.length - 1 ? "1px solid rgba(126,203,161,0.1)" : "none" }}>
                   <span style={{ fontSize: 11, color: "#4a9070" }}>{l}</span>
                   <span style={{ fontSize: 13, color: "#e0f0ea" }}>{v}</span>

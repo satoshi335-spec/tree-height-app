@@ -1,34 +1,34 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-function calcHeight(dist, deg, eyeH) {
-  return +(dist * Math.tan((deg * Math.PI) / 180) + eyeH).toFixed(1);
+// 2点ロック方式
+// 樹高 = 距離 × (tan(上角) - tan(下角)) + 目の高さ
+// ※下が負角の場合も対応
+function calcHeight2(dist, topDeg, botDeg, eyeH) {
+  const top = Math.tan((topDeg * Math.PI) / 180);
+  const bot = Math.tan((botDeg * Math.PI) / 180);
+  return +(dist * (top - bot) + eyeH).toFixed(1);
 }
 
-// センサーが使える環境かチェック
-const SENSOR_AVAILABLE = typeof window !== "undefined" && "DeviceOrientationEvent" in window;
-
 export default function App() {
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(0); // 0=intro 1=dist 2=measure 3=result
   const [dist, setDist] = useState("");
   const [eyeH, setEyeH] = useState("1.5");
   const [bodyH, setBodyH] = useState("");
   const [walkCount, setWalkCount] = useState("");
   const [stride, setStride] = useState(null);
   const [distMode, setDistMode] = useState(0);
-  const [manualDeg, setManualDeg] = useState("");
   const [liveDeg, setLiveDeg] = useState(null);
-  const [lockedDeg, setLockedDeg] = useState(null);
+  const [botLocked, setBotLocked] = useState(null); // 下（根元）ロック
+  const [topLocked, setTopLocked] = useState(null); // 上（梢）ロック
   const [sensorOn, setSensorOn] = useState(false);
-  const [angleMode, setAngleMode] = useState(1); // デフォルトを手動入力に
   const [result, setResult] = useState(null);
   const liveRef = useRef(null);
 
   const onOrient = useCallback((e) => {
     if (e.beta == null) return;
-    // 下に向けると増えていた = 今の式が逆
-    // beta - 90 にすると上向きで正になる
     let v = +(e.beta - 90).toFixed(1);
-    v = Math.max(0, Math.min(89, v));
+    // -89〜89の範囲（下向きも負で表現）
+    v = Math.max(-89, Math.min(89, v));
     liveRef.current = v;
     setLiveDeg(v);
   }, []);
@@ -39,11 +39,11 @@ export default function App() {
     try {
       if (typeof DeviceOrientationEvent?.requestPermission === "function") {
         const r = await DeviceOrientationEvent.requestPermission();
-        if (r !== "granted") { alert("センサーが許可されませんでした。手動入力をお使いください。"); return; }
+        if (r !== "granted") { alert("センサーが許可されませんでした"); return; }
       }
       window.addEventListener("deviceorientation", onOrient);
       setSensorOn(true);
-    } catch { alert("センサーを起動できませんでした。手動入力をお使いください。"); }
+    } catch { alert("センサーを起動できませんでした"); }
   };
 
   const calcStrideAndDist = () => {
@@ -51,8 +51,7 @@ export default function App() {
     if (!h) return;
     const s = +(h * 0.45 / 100).toFixed(3);
     setStride(s);
-    const w = parseFloat(walkCount);
-    if (w) setDist(+(w * s).toFixed(1) + "");
+    if (walkCount) setDist(+(parseFloat(walkCount) * s).toFixed(1) + "");
   };
 
   const handleWalk = (v) => {
@@ -60,32 +59,35 @@ export default function App() {
     if (stride && v) setDist(+(parseFloat(v) * stride).toFixed(1) + "");
   };
 
-  const lockAngle = () => {
-    const a = angleMode === 0 ? liveRef.current : parseFloat(manualDeg);
-    if (a == null || isNaN(a) || a <= 0) return;
-    setLockedDeg(+a.toFixed(1));
+  const lockBottom = () => {
+    if (liveRef.current == null) return;
+    setBotLocked(+liveRef.current.toFixed(1));
+  };
+
+  const lockTop = () => {
+    if (liveRef.current == null) return;
+    setTopLocked(+liveRef.current.toFixed(1));
   };
 
   const doCalc = () => {
-    const d = parseFloat(dist), e = parseFloat(eyeH), a = lockedDeg;
-    if (!d || !e || a == null) return;
-    setResult({ h: calcHeight(d, a, e), d, a, e });
+    const d = parseFloat(dist), e = parseFloat(eyeH);
+    if (!d || !e || botLocked == null || topLocked == null) return;
+    const h = calcHeight2(d, topLocked, botLocked, e);
+    setResult({ h, d, e, topDeg: topLocked, botDeg: botLocked });
     setPage(3);
   };
 
   const reset = () => {
     setPage(0); setDist(""); setEyeH("1.5"); setBodyH(""); setWalkCount("");
-    setStride(null); setDistMode(0); setManualDeg(""); setLiveDeg(null);
-    setLockedDeg(null); setSensorOn(false); setAngleMode(1); setResult(null);
+    setStride(null); setDistMode(0); setLiveDeg(null);
+    setBotLocked(null); setTopLocked(null); setSensorOn(false); setResult(null);
     window.removeEventListener("deviceorientation", onOrient);
   };
 
-  const shown = lockedDeg ?? (angleMode === 0 ? (liveDeg ?? 0) : (parseFloat(manualDeg) || 0));
-
+  const shown = liveDeg ?? 0;
   const GRN = "#7ecba1";
   const box = { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(126,203,161,0.2)", borderRadius: 14, padding: "18px", marginBottom: 12 };
   const primaryBtn = { width: "100%", padding: "14px", background: "#1a3a2a", border: `1px solid ${GRN}`, borderRadius: 12, color: "#e0f0ea", fontSize: 15, cursor: "pointer", marginBottom: 8, fontFamily: "inherit", letterSpacing: 1 };
-  const yellowBtn = { width: "100%", padding: "14px", background: "#2a3a10", border: "1px solid #ffd166", borderRadius: 12, color: "#ffd166", fontSize: 15, cursor: "pointer", marginBottom: 8, fontFamily: "inherit", letterSpacing: 1 };
   const ghostBtn = { width: "100%", padding: "12px", background: "transparent", border: "1px solid #4a7c5a", borderRadius: 12, color: "#a8d5b5", fontSize: 13, cursor: "pointer", marginBottom: 8, fontFamily: "inherit" };
   const inp = { width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(126,203,161,0.4)", borderRadius: 10, padding: "12px 14px", color: "#e0f0ea", fontSize: 20, outline: "none", fontFamily: "inherit" };
   const tab = (on) => ({ flex: 1, padding: "9px 6px", borderRadius: 8, cursor: "pointer", fontSize: 12, background: on ? "rgba(126,203,161,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${on ? GRN : "rgba(126,203,161,0.2)"}`, color: on ? GRN : "#4a9070", fontFamily: "inherit" });
@@ -114,47 +116,61 @@ export default function App() {
           </div>
         )}
 
-        {/* ── PAGE 0: INTRO ── */}
+        {/* ── INTRO ── */}
         {page === 0 && (
           <div style={{ marginTop: 20 }}>
             <div style={box}>
-              <svg viewBox="0 0 280 130" style={{ width: "100%", height: "auto", display: "block" }}>
-                <line x1="20" y1="110" x2="260" y2="110" stroke="#4a9070" strokeWidth="1.5" />
-                <line x1="220" y1="110" x2="220" y2="18" stroke={GRN} strokeWidth="3" />
-                <ellipse cx="220" cy="18" rx="22" ry="14" fill="#2d6a4f" opacity="0.85" />
-                <circle cx="50" cy="87" r="7" fill={GRN} opacity="0.85" />
-                <line x1="50" y1="94" x2="50" y2="110" stroke={GRN} strokeWidth="2" />
-                <line x1="50" y1="87" x2="220" y2="18" stroke="#ffd166" strokeWidth="1.5" strokeDasharray="5,3" />
-                <path d="M 78 87 A 28 28 0 0 1 67 65" fill="none" stroke="#ffd166" strokeWidth="1.5" />
-                <text x="82" y="78" fill="#ffd166" fontSize="11">θ</text>
-                <line x1="50" y1="120" x2="220" y2="120" stroke="#74b3ce" strokeWidth="1" strokeDasharray="4,3" />
-                <text x="130" y="130" fill="#74b3ce" fontSize="9" textAnchor="middle">距離 d</text>
-                <line x1="232" y1="18" x2="232" y2="110" stroke="#a8d5b5" strokeWidth="1" strokeDasharray="3,2" />
-                <text x="244" y="68" fill="#a8d5b5" fontSize="9">樹高</text>
+              <p style={{ fontSize: 12, color: GRN, textAlign: "center", letterSpacing: 1, marginBottom: 14 }}>測定の仕組み（2点ロック方式）</p>
+              <svg viewBox="0 0 280 160" style={{ width: "100%", height: "auto", display: "block" }}>
+                {/* 地面 */}
+                <line x1="20" y1="130" x2="260" y2="130" stroke="#4a9070" strokeWidth="1.5" />
+                {/* 木 */}
+                <line x1="220" y1="130" x2="220" y2="20" stroke={GRN} strokeWidth="3" />
+                <ellipse cx="220" cy="20" rx="22" ry="14" fill="#2d6a4f" opacity="0.85" />
+                {/* 人 */}
+                <circle cx="50" cy="107" r="7" fill={GRN} opacity="0.85" />
+                <line x1="50" y1="114" x2="50" y2="130" stroke={GRN} strokeWidth="2" />
+                {/* 上への視線（梢） */}
+                <line x1="50" y1="107" x2="220" y2="20" stroke="#ffd166" strokeWidth="1.5" strokeDasharray="5,3" />
+                {/* 下への視線（根元） */}
+                <line x1="50" y1="107" x2="220" y2="125" stroke="#74b3ce" strokeWidth="1.5" strokeDasharray="5,3" />
+                {/* 上角度弧 */}
+                <path d="M 78 107 A 28 28 0 0 1 68 85" fill="none" stroke="#ffd166" strokeWidth="1.5" />
+                <text x="84" y="98" fill="#ffd166" fontSize="9">上角</text>
+                {/* 下角度弧 */}
+                <path d="M 78 107 A 18 18 0 0 0 92 113" fill="none" stroke="#74b3ce" strokeWidth="1.5" />
+                <text x="86" y="122" fill="#74b3ce" fontSize="9">下角</text>
+                {/* 距離 */}
+                <line x1="50" y1="142" x2="220" y2="142" stroke="#74b3ce" strokeWidth="1" strokeDasharray="4,3" />
+                <text x="130" y="152" fill="#74b3ce" fontSize="9" textAnchor="middle">距離 d</text>
+                {/* 樹高 */}
+                <line x1="232" y1="20" x2="232" y2="130" stroke="#a8d5b5" strokeWidth="1" strokeDasharray="3,2" />
+                <text x="248" y="80" fill="#a8d5b5" fontSize="9">樹高</text>
               </svg>
-              <p style={{ fontSize: 12, color: "#a8d5b5", textAlign: "center", margin: "10px 0 0", lineHeight: 1.8 }}>
-                樹高 ＝ 距離 × tan(仰角) ＋ 目の高さ
+              <p style={{ fontSize: 11, color: "#a8d5b5", textAlign: "center", margin: "10px 0 0", lineHeight: 1.8 }}>
+                ① 根元をロック → ② 梢をロック<br/>
+                2点の角度差から樹高を計算
               </p>
             </div>
 
             <div style={{ ...box, padding: "14px 16px" }}>
               <p style={{ fontSize: 12, color: GRN, margin: "0 0 8px" }}>測定手順</p>
-              {["① 木から10〜30m離れる", "② 距離と身長を入力", "③ 仰角を入力（スマホ傾き or 目測）", "④ 樹高を自動計算"].map((t, i) => (
+              {[
+                "① 木から10〜30m離れる",
+                "② 距離と身長を入力",
+                "③ カメラを根元に向けてロック",
+                "④ カメラを梢に向けてロック",
+                "⑤ 樹高を自動計算"
+              ].map((t, i) => (
                 <p key={i} style={{ fontSize: 12, color: "#a8d5b5", margin: "5px 0", lineHeight: 1.6 }}>{t}</p>
               ))}
-            </div>
-
-            <div style={{ background: "rgba(126,203,161,0.07)", border: "1px solid rgba(126,203,161,0.2)", borderRadius: 12, padding: "10px 14px", marginBottom: 12 }}>
-              <p style={{ fontSize: 11, color: GRN, margin: 0, lineHeight: 1.7 }}>
-                💡 センサー自動計測はVercelにデプロイ後、実機のiPhoneで利用できます。このプレビューでは手動入力で動作します。
-              </p>
             </div>
 
             <button style={primaryBtn} onClick={() => setPage(1)}>🌲　測定を開始する</button>
           </div>
         )}
 
-        {/* ── PAGE 1: DISTANCE ── */}
+        {/* ── DISTANCE ── */}
         {page === 1 && (
           <div>
             <div style={box}>
@@ -164,22 +180,18 @@ export default function App() {
                 <input style={inp} type="number" value={bodyH} onChange={e => { setBodyH(e.target.value); setStride(null); }} placeholder="例: 170" />
                 <span style={{ color: GRN, minWidth: 24 }}>cm</span>
               </div>
-              {bodyH && (
-                <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 11, color: GRN }}>
-                  推定歩幅：{Math.round(parseFloat(bodyH) * 0.45)} cm　／　目の高さ目安：{(parseFloat(bodyH) * 0.93 / 100).toFixed(2)} m
-                </div>
-              )}
+              {bodyH && <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 11, color: GRN }}>
+                推定歩幅：{Math.round(parseFloat(bodyH) * 0.45)} cm　／　目の高さ目安：{(parseFloat(bodyH) * 0.93 / 100).toFixed(2)} m
+              </div>}
               <span style={lbl}>目の高さ（m）：</span>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                 <input style={inp} type="number" value={eyeH} onChange={e => setEyeH(e.target.value)} placeholder="1.5" />
                 <span style={{ color: GRN, minWidth: 24 }}>m</span>
               </div>
-              {bodyH && (
-                <button onClick={() => setEyeH((parseFloat(bodyH) * 0.93 / 100).toFixed(2))}
-                  style={{ fontSize: 11, color: GRN, background: "rgba(126,203,161,0.1)", border: "1px solid rgba(126,203,161,0.3)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit" }}>
-                  身長から自動入力
-                </button>
-              )}
+              {bodyH && <button onClick={() => setEyeH((parseFloat(bodyH) * 0.93 / 100).toFixed(2))}
+                style={{ fontSize: 11, color: GRN, background: "rgba(126,203,161,0.1)", border: "1px solid rgba(126,203,161,0.3)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+                身長から自動入力
+              </button>}
             </div>
 
             <div style={box}>
@@ -199,18 +211,18 @@ export default function App() {
                   <button style={{ ...primaryBtn, padding: "10px", fontSize: 12 }} onClick={calcStrideAndDist} disabled={!bodyH}>
                     👣 身長から歩幅を計算
                   </button>
-                  {!bodyH && <p style={{ fontSize: 11, color: "#4a7c5a", margin: "0 0 8px" }}>※ 先に身長を入力してください</p>}
-                  {stride && <div style={{ background: "rgba(126,203,161,0.1)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 12, color: GRN }}>推定歩幅：{(stride * 100).toFixed(0)} cm</div>}
+                  {!bodyH && <p style={{ fontSize: 11, color: "#4a7c5a" }}>※ 先に身長を入力してください</p>}
+                  {stride && <div style={{ background: "rgba(126,203,161,0.1)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 12, color: GRN }}>
+                    推定歩幅：{(stride * 100).toFixed(0)} cm
+                  </div>}
                   <span style={lbl}>歩数：</span>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                     <input style={inp} type="number" value={walkCount} onChange={e => handleWalk(e.target.value)} placeholder="例: 20" />
                     <span style={{ color: GRN, minWidth: 24 }}>歩</span>
                   </div>
-                  {dist && stride && (
-                    <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: GRN }}>
-                      {walkCount}歩 × {(stride * 100).toFixed(0)}cm ＝ 約 <strong>{dist} m</strong>
-                    </div>
-                  )}
+                  {dist && stride && <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: GRN }}>
+                    {walkCount}歩 × {(stride * 100).toFixed(0)}cm ＝ 約 <strong>{dist} m</strong>
+                  </div>}
                 </>
               )}
             </div>
@@ -220,93 +232,87 @@ export default function App() {
           </div>
         )}
 
-        {/* ── PAGE 2: ANGLE ── */}
+        {/* ── MEASURE ── */}
         {page === 2 && (
           <div>
             <div style={box}>
-              <p style={{ fontSize: 13, color: GRN, marginBottom: 12 }}>仰角を入力する</p>
+              <p style={{ fontSize: 13, color: GRN, marginBottom: 4 }}>角度を測定する（2点ロック）</p>
+              <p style={{ fontSize: 11, color: "#a8d5b5", marginBottom: 16 }}>スマホのカメラを覗きながら根元→梢の順にロック</p>
 
-              {/* タブ */}
-              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-                <button style={tab(angleMode === 1)} onClick={() => setAngleMode(1)}>✏️ 手動入力</button>
-                <button style={tab(angleMode === 0)} onClick={() => { setAngleMode(0); if (!sensorOn) startSensor(); }}>📱 センサー（実機）</button>
-              </div>
+              {/* センサー起動 */}
+              {!sensorOn && (
+                <button style={primaryBtn} onClick={startSensor}>📱　センサーを起動する</button>
+              )}
 
-              {/* 分度器 */}
-              <svg viewBox="0 0 200 110" style={{ width: "100%", maxWidth: 220, display: "block", margin: "0 auto 14px" }}>
-                <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="rgba(126,203,161,0.25)" strokeWidth="2" />
-                {[0, 15, 30, 45, 60, 75, 90].map(d => {
-                  const r = (180 - d) * Math.PI / 180;
-                  return <g key={d}>
-                    <line x1={100 + 85 * Math.cos(r)} y1={100 - 85 * Math.sin(r)} x2={100 + 74 * Math.cos(r)} y2={100 - 74 * Math.sin(r)} stroke="rgba(126,203,161,0.4)" strokeWidth="1.5" />
-                    <text x={100 + 62 * Math.cos(r)} y={100 - 62 * Math.sin(r) + 3} fill="rgba(126,203,161,0.6)" fontSize="8" textAnchor="middle">{d}°</text>
-                  </g>;
-                })}
-                {(() => {
-                  const r = (180 - shown) * Math.PI / 180;
-                  const col = lockedDeg != null ? "#ffd166" : GRN;
-                  return <g>
-                    <line x1="100" y1="100" x2={100 + 80 * Math.cos(r)} y2={100 - 80 * Math.sin(r)} stroke={col} strokeWidth="2.5" strokeLinecap="round" />
-                    <circle cx="100" cy="100" r="5" fill={col} />
-                  </g>;
-                })()}
-              </svg>
-
-              {/* 角度表示 */}
-              <div style={{ textAlign: "center", marginBottom: 16 }}>
-                <p style={{ fontSize: 64, fontWeight: "bold", color: lockedDeg != null ? "#ffd166" : GRN, margin: 0, lineHeight: 1 }}>{shown.toFixed(1)}</p>
-                <p style={{ fontSize: 13, color: "#a8d5b5", margin: "4px 0 0" }}>度（仰角）</p>
-                {lockedDeg != null && <p style={{ fontSize: 13, color: "#ffd166", margin: "8px 0 0" }}>✅ {lockedDeg}° でロック済み</p>}
-              </div>
-
-              {/* 手動入力 */}
-              {angleMode === 1 && lockedDeg == null && (
+              {sensorOn && (
                 <>
-                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(126,203,161,0.15)", borderRadius: 10, padding: "12px", marginBottom: 14 }}>
-                    <p style={{ fontSize: 11, color: "#6aab7e", margin: "0 0 8px" }}>仰角の目安：</p>
-                    {[["低木（〜5m）", "15〜25°"], ["中木（5〜15m）", "25〜45°"], ["高木（15m〜）", "45〜60°"]].map(([a, b]) => (
-                      <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#6aab7e", marginBottom: 4 }}>
-                        <span>{a}</span><span style={{ color: GRN, fontWeight: "bold" }}>{b}</span>
+                  {/* 現在角度の大表示 */}
+                  <div style={{ textAlign: "center", background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: "16px", marginBottom: 16 }}>
+                    <p style={{ fontSize: 11, color: "#4a9070", margin: "0 0 4px", letterSpacing: 1 }}>📡 現在の角度</p>
+                    <p style={{ fontSize: 64, fontWeight: "bold", color: shown >= 0 ? GRN : "#74b3ce", margin: 0, lineHeight: 1, letterSpacing: -2 }}>
+                      {shown > 0 ? "+" : ""}{shown.toFixed(1)}
+                    </p>
+                    <p style={{ fontSize: 13, color: "#a8d5b5", margin: "4px 0 0" }}>度　{shown > 5 ? "↑ 上向き" : shown < -5 ? "↓ 下向き" : "→ ほぼ水平"}</p>
+                  </div>
+
+                  {/* ステップ1: 下をロック */}
+                  <div style={{ background: botLocked != null ? "rgba(116,179,206,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${botLocked != null ? "rgba(116,179,206,0.5)" : "rgba(126,203,161,0.2)"}`, borderRadius: 12, padding: "14px", marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div>
+                        <p style={{ fontSize: 13, color: botLocked != null ? "#74b3ce" : "#a8d5b5", margin: 0, fontWeight: "bold" }}>
+                          {botLocked != null ? "✅ 根元ロック済み" : "① 根元をロック"}
+                        </p>
+                        <p style={{ fontSize: 11, color: "#4a7c5a", margin: "4px 0 0" }}>
+                          {botLocked != null ? `${botLocked > 0 ? "+" : ""}${botLocked}°` : "カメラを木の根元に向けてロック"}
+                        </p>
                       </div>
-                    ))}
+                      {botLocked != null
+                        ? <button onClick={() => setBotLocked(null)} style={{ fontSize: 11, color: "#74b3ce", background: "rgba(116,179,206,0.1)", border: "1px solid rgba(116,179,206,0.3)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontFamily: "inherit" }}>やり直す</button>
+                        : <button onClick={lockBottom} style={{ padding: "10px 16px", background: "rgba(116,179,206,0.2)", border: "1px solid rgba(116,179,206,0.5)", borderRadius: 10, color: "#74b3ce", fontSize: 14, cursor: "pointer", fontFamily: "inherit", fontWeight: "bold" }}>🔒 ロック</button>
+                      }
+                    </div>
                   </div>
-                  <span style={lbl}>仰角を入力（0〜89度）：</span>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-                    <input style={inp} type="number" value={manualDeg} onChange={e => setManualDeg(e.target.value)} placeholder="例: 35" min="0" max="89" />
-                    <span style={{ color: GRN, minWidth: 24 }}>度</span>
+
+                  {/* ステップ2: 上をロック */}
+                  <div style={{ background: topLocked != null ? "rgba(255,209,102,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${topLocked != null ? "rgba(255,209,102,0.5)" : "rgba(126,203,161,0.2)"}`, borderRadius: 12, padding: "14px", marginBottom: 10, opacity: botLocked == null ? 0.4 : 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div>
+                        <p style={{ fontSize: 13, color: topLocked != null ? "#ffd166" : "#a8d5b5", margin: 0, fontWeight: "bold" }}>
+                          {topLocked != null ? "✅ 梢ロック済み" : "② 梢をロック"}
+                        </p>
+                        <p style={{ fontSize: 11, color: "#4a7c5a", margin: "4px 0 0" }}>
+                          {topLocked != null ? `+${topLocked}°` : "次にカメラを木のてっぺんに向けてロック"}
+                        </p>
+                      </div>
+                      {topLocked != null
+                        ? <button onClick={() => setTopLocked(null)} style={{ fontSize: 11, color: "#ffd166", background: "rgba(255,209,102,0.1)", border: "1px solid rgba(255,209,102,0.3)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontFamily: "inherit" }}>やり直す</button>
+                        : <button onClick={lockTop} disabled={botLocked == null} style={{ padding: "10px 16px", background: "rgba(255,209,102,0.2)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 10, color: "#ffd166", fontSize: 14, cursor: botLocked == null ? "not-allowed" : "pointer", fontFamily: "inherit", fontWeight: "bold" }}>🔒 ロック</button>
+                      }
+                    </div>
                   </div>
-                  <button style={yellowBtn} onClick={lockAngle} disabled={!manualDeg || parseFloat(manualDeg) <= 0}>
-                    🎯　この角度でロックする
-                  </button>
-                </>
-              )}
 
-              {/* センサー */}
-              {angleMode === 0 && lockedDeg == null && (
-                <>
-                  {!sensorOn
-                    ? <button style={primaryBtn} onClick={startSensor}>📱 センサーを起動する</button>
-                    : <>
-                        <p style={{ fontSize: 12, color: GRN, textAlign: "center", marginBottom: 10 }}>📡 スマホを木のてっぺんに向けてください</p>
-                        <button style={yellowBtn} onClick={lockAngle}>🎯 この角度でロックする</button>
-                      </>
-                  }
+                  {/* 角度差の確認 */}
+                  {botLocked != null && topLocked != null && (
+                    <div style={{ background: "rgba(126,203,161,0.1)", border: "1px solid rgba(126,203,161,0.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 10, textAlign: "center" }}>
+                      <p style={{ fontSize: 12, color: GRN, margin: 0 }}>
+                        角度差：{(topLocked - botLocked).toFixed(1)}°（根元 {botLocked > 0 ? "+" : ""}{botLocked}° → 梢 +{topLocked}°）
+                      </p>
+                    </div>
+                  )}
                 </>
-              )}
-
-              {lockedDeg != null && (
-                <button style={ghostBtn} onClick={() => setLockedDeg(null)}>🔄 やり直す</button>
               )}
             </div>
 
-            {lockedDeg != null && (
-              <button style={yellowBtn} onClick={doCalc}>🌲　樹高を計算する</button>
+            {botLocked != null && topLocked != null && (
+              <button style={{ ...primaryBtn, background: "#2a4a1a", borderColor: "#ffd166", color: "#ffd166" }} onClick={doCalc}>
+                🌲　樹高を計算する
+              </button>
             )}
             <button style={ghostBtn} onClick={() => setPage(1)}>← 距離の入力に戻る</button>
           </div>
         )}
 
-        {/* ── PAGE 3: RESULT ── */}
+        {/* ── RESULT ── */}
         {page === 3 && result && (
           <div style={{ marginTop: 8 }}>
             <div style={{ background: "linear-gradient(135deg,#1a3a2a99,#0a2a1a55)", border: "1px solid rgba(126,203,161,0.35)", borderRadius: 20, padding: "24px 20px", textAlign: "center", marginBottom: 14 }}>
@@ -325,14 +331,22 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div style={{ ...box, padding: "14px 16px" }}>
-              {[["水平距離", `${result.d} m`], ["仰角", `${result.a}°`], ["目の高さ", `${result.e} m`], ["計算式", `${result.d}×tan(${result.a}°)+${result.e}`]].map(([l, v], i, arr) => (
+
+            <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 14, border: "1px solid rgba(126,203,161,0.15)", padding: "14px 18px", marginBottom: 12 }}>
+              {[
+                ["水平距離", `${result.d} m`],
+                ["根元の角度", `${result.botDeg > 0 ? "+" : ""}${result.botDeg}°`],
+                ["梢の角度", `+${result.topDeg}°`],
+                ["角度差", `${(result.topDeg - result.botDeg).toFixed(1)}°`],
+                ["目の高さ", `${result.e} m`],
+              ].map(([l, v], i, arr) => (
                 <div key={l} style={{ display: "flex", justifyContent: "space-between", paddingBottom: i < arr.length - 1 ? 8 : 0, marginBottom: i < arr.length - 1 ? 8 : 0, borderBottom: i < arr.length - 1 ? "1px solid rgba(126,203,161,0.1)" : "none" }}>
                   <span style={{ fontSize: 11, color: "#4a9070" }}>{l}</span>
                   <span style={{ fontSize: 13, color: "#e0f0ea" }}>{v}</span>
                 </div>
               ))}
             </div>
+
             <div style={{ background: "rgba(255,193,7,0.07)", border: "1px solid rgba(255,193,7,0.2)", borderRadius: 12, padding: "10px 14px", marginBottom: 14 }}>
               <p style={{ fontSize: 11, color: "#ffc107", margin: 0, lineHeight: 1.7 }}>⚠️ 地面の傾斜や距離の誤差により、実際の樹高と異なる場合があります。</p>
             </div>

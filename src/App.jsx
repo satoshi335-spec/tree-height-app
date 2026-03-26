@@ -234,14 +234,14 @@ function SaveModal({ measurement, trees, onSave, onSkip }) {
         </div>
         {mode === "new" && <>
           <span style={LBL}>木の名前（必須）：</span>
-          <input style={{ ...INP, marginBottom: 10, fontSize: 16 }} type="text" value={name} onChange={e => setName(e.target.value)} placeholder="例: 正門のクスノキ" />
+          <input style={{ ...INP, marginBottom: 10, fontSize: 16 }} type="text" value={name} onChange={e => setName(e.target.value)} placeholder="例: おじいちゃんの家のクスノキ" />
           <span style={LBL}>樹種：</span>
           <select value={species} onChange={e => setSpecies(e.target.value)} style={{ ...INP, marginBottom: 10, fontSize: 14, appearance: "none" }}>
             <option value="">選択してください</option>
             {TREE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <span style={LBL}>場所・区画：</span>
-          <input style={{ ...INP, marginBottom: 16, fontSize: 16 }} type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="例: A区画・正門横" />
+          <input style={{ ...INP, marginBottom: 16, fontSize: 16 }} type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="例: 大阪府・天王寺公園" />
         </>}
         {mode === "existing" && <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
           {trees.map(t => <button key={t.id} onClick={() => setSelectedId(t.id)} style={{ padding: "12px 14px", borderRadius: 10, background: selectedId===t.id ? "rgba(126,203,161,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${selectedId===t.id ? GRN : "rgba(126,203,161,0.2)"}`, color: "#e0f0ea", fontFamily: "inherit", textAlign: "left", cursor: "pointer" }}>
@@ -386,7 +386,7 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [eyeH, setEyeH] = useState(prof.eyeH||"1.5");
   const [bodyH, setBodyH] = useState(prof.bodyH||""); const [walkCount, setWalkCount] = useState("");
-  const [stride, setStride] = useState(prof.stride||null); const [distMode, setDistMode] = useState(0);
+  const [stride, setStride] = useState(prof.stride||null); const [distMode, setDistMode] = useState(1);
   const [liveDeg, setLiveDeg] = useState(null); const [bot, setBot] = useState(null); const [top, setTop] = useState(null);
   const [result, setResult] = useState(null); const [showSave, setShowSave] = useState(false);
   const liveRef = useRef(null);
@@ -474,7 +474,7 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
   const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
-  const [distMode, setDistMode] = useState(0); const [liveGamma, setLiveGamma] = useState(null);
+  const [distMode, setDistMode] = useState(1); const [liveGamma, setLiveGamma] = useState(null);
   const [left, setLeft] = useState(null); const [right, setRight] = useState(null);
   const [result, setResult] = useState(null); const [showSave, setShowSave] = useState(false);
   const gammaRef = useRef(null);
@@ -566,7 +566,7 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
   const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
-  const [distMode, setDistMode] = useState(0); const [liveGamma, setLiveGamma] = useState(null);
+  const [distMode, setDistMode] = useState(1); const [liveGamma, setLiveGamma] = useState(null);
   const [left, setLeft] = useState(null); const [right, setRight] = useState(null);
   const [result, setResult] = useState(null); const [showSave, setShowSave] = useState(false);
   const gammaRef = useRef(null);
@@ -808,7 +808,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
         </div>
         <div style={CARD}>
           <p style={{ fontSize:13, color:"#2d6a4f", marginBottom:12 }}>基本情報</p>
-          <span style={LBL}>木の名前（必須）：</span><input style={{ ...INP, marginBottom:10, fontSize:16 }} type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="例: 正門のクスノキ" />
+          <span style={LBL}>木の名前（必須）：</span><input style={{ ...INP, marginBottom:10, fontSize:16 }} type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="例: おじいちゃんの家のクスノキ" />
           <span style={LBL}>樹種：</span>
           <select value={species} onChange={e=>{
             setSpecies(e.target.value);
@@ -817,7 +817,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
             <option value="">選択してください</option>
             {TREE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
           </select>
-          <span style={LBL}>場所・区画：</span><input style={{ ...INP, marginBottom:10, fontSize:16 }} type="text" value={location} onChange={e=>setLocation(e.target.value)} placeholder="例: A区画・正門横" />
+          <span style={LBL}>場所・区画：</span><input style={{ ...INP, marginBottom:10, fontSize:16 }} type="text" value={location} onChange={e=>setLocation(e.target.value)} placeholder="例: 大阪府・天王寺公園" />
 
           {/* GPS */}
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
@@ -838,7 +838,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           ) : (
             <p style={{ fontSize:11, color:"#5a8c6a", marginBottom:10 }}>※ 登録時に現在地を取得すると地図に表示できます</p>
           )}
-          <span style={LBL}>メモ：</span><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="樹形の特徴、管理状況など..." style={{ ...INP, resize:"vertical", minHeight:64, fontSize:14 }} />
+          <span style={LBL}>メモ：</span><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="この木の特徴・感想など..." style={{ ...INP, resize:"vertical", minHeight:64, fontSize:14 }} />
         </div>
         <div style={CARD}>
           <p style={{ fontSize:13, color:"#2d6a4f", marginBottom:12 }}>測定値 <span style={{ fontSize:10, color:"#5a9070" }}>（空欄でも可）</span></p>
@@ -846,7 +846,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           {/* 樹高 */}
           <div style={{ marginBottom:10 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-              <span style={{ ...LBL, marginBottom:0 }}>樹高：</span>
+              <span style={{ ...LBL, marginBottom:0 }}>樹高（m）：</span>
               <button onClick={() => { doSave(); onMeasureHeight(editing?.id || null); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>📐 今すぐ測定</button>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={height} onChange={e=>setHeight(e.target.value)} placeholder="未測定" /><span style={{ color:"#2d6a4f", minWidth:24, fontSize:13 }}>m</span></div>
@@ -855,7 +855,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           {/* 枝張り */}
           <div style={{ marginBottom:10 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-              <span style={{ ...LBL, marginBottom:0 }}>枝張り（直径）：</span>
+              <span style={{ ...LBL, marginBottom:0 }}>枝張り・直径（m）：</span>
               <button onClick={() => { doSave(); onMeasureSpread(editing?.id || null); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌿 今すぐ測定</button>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={spread} onChange={e=>setSpread(e.target.value)} placeholder="未測定" /><span style={{ color:"#2d6a4f", minWidth:24, fontSize:13 }}>m</span></div>
@@ -864,14 +864,15 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           {/* 幹周り */}
           <div style={{ marginBottom:10 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-              <span style={{ ...LBL, marginBottom:0 }}>幹周り：</span>
+              <span style={{ ...LBL, marginBottom:0 }}>幹周り（cm・地上1.3m）：</span>
               <button onClick={() => { doSave(); onMeasureTrunk(editing?.id || null); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌲 今すぐ測定</button>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={trunk} onChange={e=>{
               setTrunk(e.target.value);
               if (e.target.value && species) { setAge(estimateAge(parseFloat(e.target.value), species)+""); setAgeAuto(true); }
               else if (!e.target.value) { if (ageAuto) setAge(""); setAgeAuto(false); }
-            }} placeholder="未測定" /><span style={{ color:"#2d6a4f", minWidth:28, fontSize:13 }}>cm</span></div>
+            }} placeholder="例: 250" /><span style={{ color:"#2d6a4f", minWidth:28, fontSize:13 }}>cm</span></div>
+            <p style={{ fontSize:11, color:"#5a8c6a", margin:"4px 0 0" }}>※ メジャーで測った幹の周囲の長さをcmで入力（例：大きな木は100〜500cm）</p>
           </div>
           {/* 推定樹齢 */}
           <div style={{ marginBottom:10 }}>

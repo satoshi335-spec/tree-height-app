@@ -437,7 +437,7 @@ function PdfModal({ trees, onClose }) {
 // ================================================================
 // HEIGHT APP
 // ================================================================
-function HeightApp({ prof, trees, onSaveTree, onBack }) {
+function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [eyeH, setEyeH] = useState(prof.eyeH||"1.5");
   const [bodyH, setBodyH] = useState(prof.bodyH||""); const [walkCount, setWalkCount] = useState("");
@@ -513,7 +513,12 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
             </div>
           ))}
         </div>
-        <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
+        {pendingTreeId
+          ? <button style={{ ...PRI, background:"#1a3a2a", borderColor:GRN, color:GRN }} onClick={() => onSaveTree(null, pendingTreeId, { height: result.height+"" })}>
+              💾　{pendingTreeName||"この木"}に保存する
+            </button>
+          : <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
+        }
         <button style={PRI} onClick={reset}>📐　もう一度測定する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
         {showSave && <SaveModal measurement={{ height: result.height+"" }} trees={trees} onSave={(nt,eid) => { onSaveTree(nt,eid,{ height: result.height+"" }); setShowSave(false); }} onSkip={() => setShowSave(false)} />}
@@ -525,7 +530,7 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
 // ================================================================
 // SPREAD APP
 // ================================================================
-function SpreadApp({ prof, trees, onSaveTree, onBack }) {
+function SpreadApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
   const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
@@ -613,7 +618,12 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
             </div>
           ))}
         </div>
-        <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
+        {pendingTreeId
+          ? <button style={{ ...PRI, background:"#1a3a2a", borderColor:GRN, color:GRN }} onClick={() => onSaveTree(null, pendingTreeId, { spread: result.spread+"" })}>
+              💾　{pendingTreeName||"この木"}に保存する
+            </button>
+          : <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
+        }
         <button style={PRI} onClick={reset}>🌿　もう一度測定する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
         {showSave && <SaveModal measurement={{ spread: result.spread+"" }} trees={trees} onSave={(nt,eid) => { onSaveTree(nt,eid,{ spread: result.spread+"" }); setShowSave(false); }} onSkip={() => setShowSave(false)} />}
@@ -632,53 +642,108 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
 // ================================================================
 function TrunkTapView({ videoRef, cameraOn, startAll, sensorOn, left, right, onLockLeft, onLockRight, onRedo, labelLeft, labelRight }) {
   const containerRef = useRef(null);
+  const draggingRef = useRef(null); // "left" | "right" | null
 
-  const handleTap = (e) => {
-    if (!cameraOn) return;
+  const getX = (e) => {
     const rect = containerRef.current.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const ratio = +(x / rect.width).toFixed(3);
-    if (left === null) {
-      onLockLeft(ratio);
-    } else if (right === null) {
-      onLockRight(ratio);
-    }
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    return Math.max(0, Math.min(1, +((clientX - rect.left) / rect.width).toFixed(3)));
   };
 
-  const leftPx = left !== null && containerRef.current ? left * containerRef.current.clientWidth : null;
-  const rightPx = right !== null && containerRef.current ? right * containerRef.current.clientWidth : null;
+  // タップ開始：バーの近く（±20px）ならドラッグ、そうでなければ新規ロック
+  const onTouchStart = (e) => {
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientX = e.touches[0].clientX;
+    const xPx = clientX - rect.left;
+    const SNAP = 24; // px
+    const leftPx = left !== null ? left * rect.width : null;
+    const rightPx = right !== null ? right * rect.width : null;
+    if (leftPx !== null && Math.abs(xPx - leftPx) < SNAP) {
+      draggingRef.current = "left"; return;
+    }
+    if (rightPx !== null && Math.abs(xPx - rightPx) < SNAP) {
+      draggingRef.current = "right"; return;
+    }
+    draggingRef.current = null;
+  };
+
+  const onTouchMove = (e) => {
+    if (!draggingRef.current) return;
+    e.preventDefault();
+    const ratio = getX(e);
+    if (draggingRef.current === "left") onLockLeft(ratio);
+    if (draggingRef.current === "right") onLockRight(ratio);
+  };
+
+  const onTouchEnd = (e) => {
+    if (draggingRef.current) { draggingRef.current = null; return; }
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientX = e.changedTouches[0].clientX;
+    const ratio = Math.max(0, Math.min(1, +((clientX - rect.left) / rect.width).toFixed(3)));
+    if (left === null) onLockLeft(ratio);
+    else if (right === null) onLockRight(ratio);
+  };
+
+  // PCマウス対応
+  const onMouseDown = (e) => {
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const xPx = e.clientX - rect.left;
+    const SNAP = 24;
+    const lPx = left !== null ? left * rect.width : null;
+    const rPx = right !== null ? right * rect.width : null;
+    if (lPx !== null && Math.abs(xPx - lPx) < SNAP) { draggingRef.current = "left"; return; }
+    if (rPx !== null && Math.abs(xPx - rPx) < SNAP) { draggingRef.current = "right"; return; }
+    const ratio = Math.max(0, Math.min(1, +((xPx) / rect.width).toFixed(3)));
+    if (left === null) onLockLeft(ratio);
+    else if (right === null) onLockRight(ratio);
+  };
+  const onMouseMove = (e) => {
+    if (!draggingRef.current) return;
+    const ratio = getX(e);
+    if (draggingRef.current === "left") onLockLeft(ratio);
+    if (draggingRef.current === "right") onLockRight(ratio);
+  };
+  const onMouseUp = () => { draggingRef.current = null; };
+
+  const W = containerRef.current ? containerRef.current.clientWidth : 0;
+  const leftPx = left !== null ? left * W : null;
+  const rightPx = right !== null ? right * W : null;
+  const isDraggingLeft = draggingRef.current === "left";
+  const isDraggingRight = draggingRef.current === "right";
 
   return (
     <div>
       <div ref={containerRef}
-        style={{ position:"relative", borderRadius:16, overflow:"hidden", marginBottom:12, background:"#000", aspectRatio:"3/4", cursor: cameraOn ? "crosshair" : "default" }}
-        onClick={handleTap} onTouchEnd={e => { e.preventDefault(); handleTap(e); }}>
+        style={{ position:"relative", borderRadius:16, overflow:"hidden", marginBottom:12, background:"#000", aspectRatio:"3/4", touchAction:"none" }}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
         <video ref={videoRef} autoPlay playsInline muted style={{ width:"100%", height:"100%", objectFit:"cover", display:cameraOn?"block":"none" }} />
         {!cameraOn && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"#f0f7f0" }}>
           <p style={{ color:"#5a8c6a", fontSize:13, textAlign:"center" }}>📷<br/>カメラ起動後に映像が表示されます</p>
         </div>}
         {cameraOn && <>
-          {/* 中央の縦ガイドライン */}
+          {/* 中央ガイドライン */}
           <div style={{ position:"absolute", left:"50%", top:"5%", bottom:"5%", width:1, background:"rgba(45,106,79,0.3)", transform:"translateX(-50%)", pointerEvents:"none" }} />
-          {/* 十字線 */}
-          <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:40, height:40, pointerEvents:"none" }}>
-            <div style={{ position:"absolute", top:"50%", left:0, right:0, height:2, background:"#2d6a4f", opacity:0.7, transform:"translateY(-50%)" }} />
-            <div style={{ position:"absolute", left:"50%", top:0, bottom:0, width:2, background:"#2d6a4f", opacity:0.7, transform:"translateX(-50%)" }} />
-          </div>
-          {/* 左端ライン */}
-          {leftPx !== null && <div style={{ position:"absolute", left:leftPx, top:0, bottom:0, width:4, background:BLUE, opacity:0.95, transform:"translateX(-50%)", pointerEvents:"none", boxShadow:`0 0 12px ${BLUE}` }}>
-            <span style={{ position:"absolute", top:8, left:6, fontSize:11, color:BLUE, background:"rgba(0,0,0,0.7)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>✅ 左端</span>
+          {/* 左端ライン（ドラッグハンドル付き） */}
+          {leftPx !== null && <div style={{ position:"absolute", left:leftPx, top:0, bottom:0, width:isDraggingLeft?6:4, background:BLUE, opacity:isDraggingLeft?1:0.95, transform:"translateX(-50%)", pointerEvents:"none", boxShadow:`0 0 ${isDraggingLeft?20:12}px ${BLUE}`, transition:"width 0.1s, box-shadow 0.1s" }}>
+            {/* ドラッグハンドル */}
+            <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:28, height:28, borderRadius:"50%", background:BLUE, border:"3px solid #fff", boxShadow:`0 2px 8px rgba(0,0,0,0.4)` }} />
+            <span style={{ position:"absolute", top:8, left:10, fontSize:11, color:BLUE, background:"rgba(0,0,0,0.75)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>← 左端 →</span>
           </div>}
-          {/* 右端ライン */}
-          {rightPx !== null && <div style={{ position:"absolute", left:rightPx, top:0, bottom:0, width:4, background:GOLD, opacity:0.95, transform:"translateX(-50%)", pointerEvents:"none", boxShadow:`0 0 12px ${GOLD}` }}>
-            <span style={{ position:"absolute", top:28, left:6, fontSize:11, color:GOLD, background:"rgba(0,0,0,0.7)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>✅ 右端</span>
+          {/* 右端ライン（ドラッグハンドル付き） */}
+          {rightPx !== null && <div style={{ position:"absolute", left:rightPx, top:0, bottom:0, width:isDraggingRight?6:4, background:GOLD, opacity:isDraggingRight?1:0.95, transform:"translateX(-50%)", pointerEvents:"none", boxShadow:`0 0 ${isDraggingRight?20:12}px ${GOLD}`, transition:"width 0.1s, box-shadow 0.1s" }}>
+            <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:28, height:28, borderRadius:"50%", background:GOLD, border:"3px solid #fff", boxShadow:`0 2px 8px rgba(0,0,0,0.4)` }} />
+            <span style={{ position:"absolute", top:36, left:10, fontSize:11, color:GOLD, background:"rgba(0,0,0,0.75)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>← 右端 →</span>
           </div>}
-          {/* 2本ロック時：幅を示す帯 */}
+          {/* 帯 */}
           {leftPx !== null && rightPx !== null && <div style={{ position:"absolute", top:0, bottom:0, left:Math.min(leftPx, rightPx), width:Math.abs(rightPx-leftPx), background:"rgba(126,203,161,0.15)", pointerEvents:"none" }} />}
           {/* 指示テキスト */}
           <div style={{ position:"absolute", bottom:10, left:0, right:0, textAlign:"center", pointerEvents:"none" }}>
-            <span style={{ fontSize:13, color:"#fff", background:"rgba(0,0,0,0.6)", padding:"5px 14px", borderRadius:20, fontFamily:"inherit" }}>
-              {left===null ? `👆 ${labelLeft||"幹の左端"}をタップ` : right===null ? `👆 ${labelRight||"幹の右端"}をタップ` : "✅ 2点ロック完了"}
+            <span style={{ fontSize:15, color:"#fff", background:"rgba(0,0,0,0.65)", padding:"8px 18px", borderRadius:20, fontFamily:"inherit", fontWeight:"bold" }}>
+              {left===null ? `👆 ${labelLeft||"左端"}をタップ` : right===null ? `👆 ${labelRight||"右端"}をタップ` : "↔ ドラッグで微調整できます"}
             </span>
           </div>
           {/* ロック状態 */}
@@ -698,7 +763,7 @@ function TrunkTapView({ videoRef, cameraOn, startAll, sensorOn, left, right, onL
   );
 }
 
-function TrunkApp({ prof, trees, onSaveTree, onBack }) {
+function TrunkApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
   const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
@@ -826,7 +891,12 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
         <div style={{ background:"rgba(255,193,7,0.07)", border:"1px solid rgba(255,193,7,0.2)", borderRadius:12, padding:"10px 14px", marginBottom:12 }}>
           <p style={{ fontSize:11, color:"#ffc107", margin:0, lineHeight:1.7 }}>⚠️ 地上1.3mの高さで測定すると標準的な幹周りになります。</p>
         </div>
-        <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
+        {pendingTreeId
+          ? <button style={{ ...PRI, background:"#1a3a2a", borderColor:GRN, color:GRN }} onClick={() => onSaveTree(null, pendingTreeId, { trunk: result.circ+"" })}>
+              💾　{pendingTreeName||"この木"}に保存する
+            </button>
+          : <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
+        }
         <button style={PRI} onClick={reset}>🌲　もう一度測定する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
         {showSave && <SaveModal measurement={{ trunk: result.circ+"" }} trees={trees} onSave={(nt,eid,sel) => {
@@ -1459,6 +1529,7 @@ export default function App() {
   const [mode, setMode] = useState(null);
   const [trees, setTrees] = useState(loadTrees);
   const [pendingTreeId, setPendingTreeId] = useState(null);
+  const [pendingTreeName, setPendingTreeName] = useState(null);
   const [mapSelectedId, setMapSelectedId] = useState(null);
   const prof = loadProfile();
 
@@ -1515,9 +1586,9 @@ export default function App() {
           {menuBtn("🌲","幹周りを測定する","カメラで幹の左右を2点ロック",null,()=>{ setPendingTreeId(null); setMode("trunk"); })}
         </div>}
 
-        {mode==="height"&&<HeightApp prof={prof} trees={trees} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
-        {mode==="spread"&&<SpreadApp prof={prof} trees={trees} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
-        {mode==="trunk"&&<TrunkApp prof={prof} trees={trees} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="height"&&<HeightApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="spread"&&<SpreadApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="trunk"&&<TrunkApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
         {mode==="carte"&&<CarteApp trees={trees} onUpdate={updateTrees} onBack={()=>{ setMapSelectedId(null); setMode(null); }} onMeasureHeight={onMeasureHeight} onMeasureSpread={onMeasureSpread} onMeasureTrunk={onMeasureTrunk} initialSelectedId={mapSelectedId}/>}
         {mode==="map"&&<MapApp trees={trees} onSelectTree={onSelectTree} onBack={()=>setMode(null)}/>}
       </div>

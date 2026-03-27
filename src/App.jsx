@@ -29,8 +29,8 @@ function today() { const d = new Date(); return `${d.getFullYear()}/${d.getMonth
 function loadProfile() {
   try {
     const p = JSON.parse(localStorage.getItem("fs_profile") || "{}");
-    // 歩幅を常に身長から再計算（古い保存値を使わない）
-    if (p.bodyH) {
+    // 身長から自動計算モードの場合のみ再計算
+    if (p.bodyH && p.strideMode !== "manual") {
       p.stride = +(parseFloat(p.bodyH) * 0.37 / 100).toFixed(3);
       saveProfile(p);
     }
@@ -185,11 +185,60 @@ function useCameraAndSensor(onOrient) {
 // DIST PANEL
 // ================================================================
 function DistPanel({ bodyH, setBodyH, eyeH, setEyeH, dist, setDist, distMode, setDistMode, stride, setStride, walkCount, setWalkCount, showEyeH }) {
+  const prof = loadProfile();
   const [msg, setMsg] = useState(false);
-  const onBodyH = v => { setBodyH(v); setStride(null); const h = parseFloat(v); if (h > 0) saveProfile({ ...loadProfile(), bodyH: v, stride: +(h*0.37/100).toFixed(3) }); };
-  const autoFill = () => { const h = parseFloat(bodyH); if (!h) return; const e = +(h*0.93/100).toFixed(2)+""; const s = +(h*0.37/100).toFixed(3); setEyeH(e); setStride(s); saveProfile({ ...loadProfile(), bodyH, eyeH: e, stride: s }); setMsg(true); setTimeout(() => setMsg(false), 2000); };
-  const cs = () => { const h = parseFloat(bodyH); if (!h) return; const s = +(h*0.37/100).toFixed(3); setStride(s); if (walkCount) setDist(+(parseFloat(walkCount)*s).toFixed(1)+""); };
+  // 歩幅モード：auto（身長から）/ manual（実測入力）
+  const [strideMode, setStrideModeLocal] = useState(prof.strideMode || "auto");
+  const [manualStrideCm, setManualStrideCm] = useState(prof.manualStrideCm || "");
+
+  const switchStrideMode = (mode) => {
+    setStrideModeLocal(mode);
+    saveProfile({ ...loadProfile(), strideMode: mode });
+    if (mode === "auto" && bodyH) {
+      const s = +(parseFloat(bodyH) * 0.37 / 100).toFixed(3);
+      setStride(s);
+      saveProfile({ ...loadProfile(), strideMode: mode, stride: s });
+    }
+    if (mode === "manual" && manualStrideCm) {
+      const s = +(parseFloat(manualStrideCm) / 100).toFixed(3);
+      setStride(s);
+      saveProfile({ ...loadProfile(), strideMode: mode, stride: s });
+    }
+  };
+
+  const onBodyH = v => {
+    setBodyH(v);
+    const h = parseFloat(v);
+    if (h > 0 && strideMode === "auto") {
+      const s = +(h * 0.37 / 100).toFixed(3);
+      setStride(s);
+      saveProfile({ ...loadProfile(), bodyH: v, stride: s });
+    } else {
+      saveProfile({ ...loadProfile(), bodyH: v });
+    }
+  };
+
+  const onManualStride = v => {
+    setManualStrideCm(v);
+    if (v) {
+      const s = +(parseFloat(v) / 100).toFixed(3);
+      setStride(s);
+      saveProfile({ ...loadProfile(), strideMode: "manual", manualStrideCm: v, stride: s });
+    }
+    if (walkCount && v) setDist(+(parseFloat(walkCount) * parseFloat(v) / 100).toFixed(1) + "");
+  };
+
+  const autoFill = () => {
+    const h = parseFloat(bodyH); if (!h) return;
+    const e = +(h*0.93/100).toFixed(2)+"";
+    const s = +(h*0.37/100).toFixed(3);
+    setEyeH(e); setStride(s);
+    saveProfile({ ...loadProfile(), bodyH, eyeH: e, stride: s, strideMode: "auto" });
+    setMsg(true); setTimeout(() => setMsg(false), 2000);
+  };
+
   const hw = v => { setWalkCount(v); if (stride && v) setDist(+(parseFloat(v)*stride).toFixed(1)+""); };
+
   return (
     <>
       <div style={CARD}>
@@ -199,9 +248,6 @@ function DistPanel({ bodyH, setBodyH, eyeH, setEyeH, dist, setDist, distMode, se
           <input style={INP} type="number" value={bodyH} onChange={e => onBodyH(e.target.value)} placeholder="例: 170" />
           <span style={{ color: GRN, minWidth: 24 }}>cm</span>
         </div>
-        {bodyH && <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 11, color: GRN }}>
-          推定歩幅：{Math.round(parseFloat(bodyH)*0.37)} cm（測定時の慎重歩き）　目の高さ：{(parseFloat(bodyH)*0.93/100).toFixed(2)} m
-        </div>}
         {showEyeH && <>
           <span style={LBL}>目の高さ（m）：</span>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
@@ -209,11 +255,44 @@ function DistPanel({ bodyH, setBodyH, eyeH, setEyeH, dist, setDist, distMode, se
             <span style={{ color: GRN, minWidth: 24 }}>m</span>
           </div>
         </>}
-        {bodyH && <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {bodyH && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <button onClick={autoFill} style={{ fontSize: 11, color: GRN, background: "rgba(126,203,161,0.1)", border: "1px solid rgba(126,203,161,0.3)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontFamily: "inherit" }}>身長から自動入力</button>
           {msg && <span style={{ fontSize: 11, color: GOLD }}>✅ 保存</span>}
         </div>}
+
+        {/* 歩幅設定 */}
+        <div style={{ borderTop: "1px solid rgba(126,203,161,0.2)", paddingTop: 12, marginTop: 4 }}>
+          <p style={{ fontSize: 12, color: GRN, marginBottom: 8 }}>歩幅の設定</p>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            <button style={TAB(strideMode==="auto")} onClick={() => switchStrideMode("auto")}>🤖 身長から自動計算</button>
+            <button style={TAB(strideMode==="manual")} onClick={() => switchStrideMode("manual")}>📏 実測値を入力</button>
+          </div>
+          {strideMode === "auto" && <>
+            {bodyH
+              ? <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: GRN }}>
+                  歩幅：<strong>{Math.round(parseFloat(bodyH)*0.37)} cm</strong>
+                  <span style={{ color: "#4a9070", marginLeft: 8 }}>（身長×0.37・慎重歩き）</span>
+                </div>
+              : <p style={{ fontSize: 11, color: "#4a9070" }}>先に身長を入力してください</p>
+            }
+          </>}
+          {strideMode === "manual" && <>
+            <span style={LBL}>実測歩幅（cm）：</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+              <input style={INP} type="number" value={manualStrideCm} onChange={e => onManualStride(e.target.value)} placeholder="例: 60" />
+              <span style={{ color: GRN, minWidth: 24 }}>cm</span>
+            </div>
+            <div style={{ background: "rgba(255,209,102,0.08)", border: "1px solid rgba(255,209,102,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: GOLD, lineHeight: 1.7 }}>
+              💡 測り方：10歩歩いた距離（cm）÷ 10<br/>
+              例：600cm ÷ 10 = <strong>60cm</strong>
+            </div>
+            {manualStrideCm && <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "8px 12px", marginTop: 6, fontSize: 12, color: GRN }}>
+              歩幅：<strong>{manualStrideCm} cm</strong>（実測値・保存済み）
+            </div>}
+          </>}
+        </div>
       </div>
+
       <div style={CARD}>
         <p style={{ fontSize: 13, color: GRN, marginBottom: 12 }}>木までの距離</p>
         <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -222,15 +301,19 @@ function DistPanel({ bodyH, setBodyH, eyeH, setEyeH, dist, setDist, distMode, se
         </div>
         {distMode === 0 && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><input style={INP} type="number" value={dist} onChange={e => setDist(e.target.value)} placeholder="例: 15" /><span style={{ color: GRN, minWidth: 24 }}>m</span></div>}
         {distMode === 1 && <>
-          {!stride ? <button style={{ ...PRI, padding: "10px", fontSize: 12 }} onClick={cs} disabled={!bodyH}>👣 身長から歩幅を計算</button>
-                   : <div style={{ background: "rgba(126,203,161,0.1)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 12, color: GRN }}>
-                       歩幅：{(stride*100).toFixed(0)} cm
-                       <span style={{ fontSize:10, color:"#4a9070", marginLeft:8 }}>※ 実測と違う場合は身長を再入力してください</span>
-                     </div>}
-          {!bodyH && <p style={{ fontSize: 11, color: "#4a7c5a" }}>※ 先に身長を入力してください</p>}
+          {!stride && <p style={{ fontSize: 11, color: "#4a9070", marginBottom: 8 }}>※ 上で歩幅を設定してください</p>}
+          {stride && <div style={{ background: "rgba(126,203,161,0.1)", borderRadius: 8, padding: "7px 12px", marginBottom: 10, fontSize: 12, color: GRN }}>
+            使用する歩幅：<strong>{(stride*100).toFixed(0)} cm</strong>
+            <span style={{ fontSize: 10, color: "#4a9070", marginLeft: 6 }}>（{strideMode==="manual"?"実測値":"身長から推定"}）</span>
+          </div>}
           <span style={LBL}>歩数：</span>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}><input style={INP} type="number" value={walkCount} onChange={e => hw(e.target.value)} placeholder="例: 20" /><span style={{ color: GRN, minWidth: 24 }}>歩</span></div>
-          {dist && stride && <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: GRN }}>{walkCount}歩 × {(stride*100).toFixed(0)}cm ＝ 約 <strong>{dist} m</strong></div>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+            <input style={INP} type="number" value={walkCount} onChange={e => hw(e.target.value)} placeholder="例: 20" />
+            <span style={{ color: GRN, minWidth: 24 }}>歩</span>
+          </div>
+          {dist && stride && <div style={{ background: "rgba(126,203,161,0.08)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: GRN }}>
+            {walkCount}歩 × {(stride*100).toFixed(0)}cm ＝ 約 <strong>{dist} m</strong>
+          </div>}
         </>}
       </div>
     </>

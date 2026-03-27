@@ -19,7 +19,17 @@ function calcTrunk(dist, leftDeg, rightDeg) {
 }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function today() { const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }
-function loadProfile() { try { return JSON.parse(localStorage.getItem("fs_profile") || "{}"); } catch { return {}; } }
+function loadProfile() {
+  try {
+    const p = JSON.parse(localStorage.getItem("fs_profile") || "{}");
+    // 歩幅を常に身長から再計算（古い保存値を使わない）
+    if (p.bodyH) {
+      p.stride = +(parseFloat(p.bodyH) * 0.37 / 100).toFixed(3);
+      saveProfile(p);
+    }
+    return p;
+  } catch { return {}; }
+}
 function saveProfile(o) { try { localStorage.setItem("fs_profile", JSON.stringify(o)); } catch {} }
 function loadTrees() { try { return JSON.parse(localStorage.getItem("fs_trees") || "[]"); } catch { return []; } }
 function saveTrees(t) { try { localStorage.setItem("fs_trees", JSON.stringify(t)); } catch {} }

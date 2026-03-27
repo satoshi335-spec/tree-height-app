@@ -453,7 +453,7 @@ function HeightApp({ prof, trees, onSaveTree, onBack }) {
 
   return (
     <div>
-      {pg>0&&pg<3&&<div style={{ display:"flex", gap:4, margin:"14px 0" }}>{["① 距離入力","② 角度測定","③ 結果"].map((l,i)=><div key={i} style={{ flex:1, textAlign:"center" }}><div style={{ height:3, borderRadius:2, background:i<pg?"#2d6a4f":"rgba(45,106,79,0.2)", marginBottom:4 }}/><span style={{ fontSize:10, color:i<pg?"#1b4332":"#74a98a" }}>{l}</span></div>)}</div>}
+      {pg>0&&pg<3&&<div style={{ display:"flex", gap:4, margin:"14px 0" }}>{["① 距離入力","② タップ測定","③ 結果"].map((l,i)=><div key={i} style={{ flex:1, textAlign:"center" }}><div style={{ height:3, borderRadius:2, background:i<pg?"#2d6a4f":"rgba(45,106,79,0.2)", marginBottom:4 }}/><span style={{ fontSize:10, color:i<pg?"#1b4332":"#74a98a" }}>{l}</span></div>)}</div>}
       {pg===0&&<div style={{ marginTop:12 }}>
         <div style={CARD}><p style={{ fontSize:12, color:"#2d6a4f", textAlign:"center", marginBottom:10 }}>2点ロック方式（上下）</p>
           <svg viewBox="0 0 280 150" style={{ width:"100%", height:"auto", display:"block" }}>
@@ -529,23 +529,25 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
   const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
-  const [distMode, setDistMode] = useState(1); const [liveGamma, setLiveGamma] = useState(null);
+  const [distMode, setDistMode] = useState(1);
   const [left, setLeft] = useState(null); const [right, setRight] = useState(null);
   const [result, setResult] = useState(null); const [showSave, setShowSave] = useState(false);
-  const gammaRef = useRef(null);
-  const onOrient = useCallback(e => { if (e.gamma==null) return; let v = +e.gamma.toFixed(1); v = Math.max(-89,Math.min(89,v)); gammaRef.current=v; setLiveGamma(v); }, []);
-  const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(onOrient);
-  const shown = liveGamma??0; const canCalc = left!==null&&right!==null&&!!dist;
+  const dummyOrient = useCallback(() => {}, []);
+  const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(dummyOrient);
+  const canCalc = left!==null&&right!==null&&!!dist;
   const doCalc = () => {
     if (!canCalc) return; stopCamera();
-    // 縦持ち左右回転：左右の角度をそれぞれtan変換して合計
-    const lRad = Math.abs(left) * Math.PI / 180;
-    const rRad = Math.abs(right) * Math.PI / 180;
+    // タップ方式：画面上のX座標比率から角度を計算（FOV 60°）
+    const FOV = 60;
+    const leftAngle = (left - 0.5) * FOV;
+    const rightAngle = (right - 0.5) * FOV;
+    const lRad = Math.abs(leftAngle) * Math.PI / 180;
+    const rRad = Math.abs(rightAngle) * Math.PI / 180;
     const s = +(parseFloat(dist) * (Math.tan(lRad) + Math.tan(rRad))).toFixed(1);
-    setResult({ spread:s, radius:+(s/2).toFixed(1), area:+(Math.PI*(s/2)*(s/2)).toFixed(1), d:parseFloat(dist), leftDeg:left, rightDeg:right });
+    setResult({ spread:s, radius:+(s/2).toFixed(1), area:+(Math.PI*(s/2)*(s/2)).toFixed(1), d:parseFloat(dist), leftPct:left, rightPct:right });
     setPg(3);
   };
-  const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLiveGamma(null); setLeft(null); setRight(null); setResult(null); setShowSave(false); };
+  const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLeft(null); setRight(null); setResult(null); setShowSave(false); };
 
   return (
     <div>
@@ -567,7 +569,7 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
             <line x1="82" y1="137" x2="198" y2="137" stroke="#a8d5b5" strokeWidth="1" strokeDasharray="3,2"/>
             <text x="140" y="148" fill="#a8d5b5" fontSize="9" textAnchor="middle">枝張り</text>
           </svg>
-          <p style={{ fontSize:11, color:"#5a8c6a", textAlign:"center", margin:"8px 0 0", lineHeight:1.8 }}>① 左端をロック → ② 右端をロック</p>
+          <p style={{ fontSize:11, color:"#5a8c6a", textAlign:"center", margin:"8px 0 0", lineHeight:1.8 }}>① 枝の左端をタップ → ② 枝の右端をタップ<br/>画面上の2点から枝張りを計算</p>
         </div>
         <button style={PRI} onClick={() => setPg(1)}>🌿　測定を開始する</button>
         <button style={GHO} onClick={onBack}>← メニューに戻る</button>
@@ -578,14 +580,13 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
         <button style={GHO} onClick={() => setPg(0)}>← 戻る</button>
       </div>}
       {pg===2&&<div>
-        <CameraView videoRef={videoRef} cameraOn={cameraOn} sensorOn={sensorOn} shown={shown} lock1={left} lock2={right} label1="左端" label2="右端" color1={BLUE} color2={GOLD} isVertical={false} />
-        <LockButtons sensorOn={sensorOn} startAll={startAll} lock1={left} lock2={right}
-          onLock1={() => { if (gammaRef.current!=null) setLeft(+gammaRef.current.toFixed(1)); }}
-          onLock2={() => { if (gammaRef.current!=null) setRight(+gammaRef.current.toFixed(1)); }}
-          onRedo1={() => { setLeft(null); setRight(null); }} onRedo2={() => setRight(null)}
-          label1="左端" label2="右端" color1={BLUE} color2={GOLD} hint1="体ごと左に向いて左端に照準" hint2="体ごと右に向いて右端に照準" />
+        <TrunkTapView videoRef={videoRef} cameraOn={cameraOn} startAll={startAll} sensorOn={sensorOn}
+          left={left} right={right}
+          onLockLeft={v => setLeft(v)} onLockRight={v => setRight(v)}
+          onRedo={() => { setLeft(null); setRight(null); }}
+          labelLeft="枝の左端" labelRight="枝の右端" />
         <button onClick={doCalc} style={{ ...PRI, background:canCalc?"#2a4a1a":"#1a2a1a", borderColor:canCalc?GOLD:"#4a7c5a", color:canCalc?GOLD:"#4a7c5a", cursor:canCalc?"pointer":"not-allowed" }}>
-          🌿　枝張りを計算する {!canCalc&&(left===null?"（左端をロック）":right===null?"（右端をロック）":"（距離を入力）")}
+          🌿　枝張りを計算する {!canCalc&&(left===null?"（左端をタップ）":right===null?"（右端をタップ）":"（距離を入力）")}
         </button>
         <button style={GHO} onClick={() => { setPg(1); stopCamera(); }}>← 距離の入力に戻る</button>
       </div>}
@@ -606,7 +607,7 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
           </div>
         </div>
         <div style={{ ...CARD, padding:"14px 16px" }}>
-          {[["水平距離",`${result.d} m`],["左端",`${result.leftDeg}°`],["右端",`${result.rightDeg}°`],["角度合計",`${(Math.abs(result.leftDeg)+Math.abs(result.rightDeg)).toFixed(1)}°`]].map(([l,v],i,a)=>(
+          {[["水平距離",`${result.d} m`],["枝張り",`${result.spread} m`],["片側半径",`${result.radius} m`],["樹冠面積",`${result.area} m²`]].map(([l,v],i,a)=>(
             <div key={l} style={{ display:"flex", justifyContent:"space-between", paddingBottom:i<a.length-1?7:0, marginBottom:i<a.length-1?7:0, borderBottom:i<a.length-1?"1px solid rgba(126,203,161,0.1)":"none" }}>
               <span style={{ fontSize:11, color:"#5a9070" }}>{l}</span><span style={{ fontSize:13, color:"#1a3a2a" }}>{v}</span>
             </div>
@@ -629,7 +630,7 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
 // ================================================================
 // TRUNK TAP VIEW（幹周り：画面タップ方式）
 // ================================================================
-function TrunkTapView({ videoRef, cameraOn, startAll, sensorOn, left, right, onLockLeft, onLockRight, onRedo }) {
+function TrunkTapView({ videoRef, cameraOn, startAll, sensorOn, left, right, onLockLeft, onLockRight, onRedo, labelLeft, labelRight }) {
   const containerRef = useRef(null);
 
   const handleTap = (e) => {
@@ -677,13 +678,13 @@ function TrunkTapView({ videoRef, cameraOn, startAll, sensorOn, left, right, onL
           {/* 指示テキスト */}
           <div style={{ position:"absolute", bottom:10, left:0, right:0, textAlign:"center", pointerEvents:"none" }}>
             <span style={{ fontSize:13, color:"#fff", background:"rgba(0,0,0,0.6)", padding:"5px 14px", borderRadius:20, fontFamily:"inherit" }}>
-              {left===null ? "👆 幹の左端をタップ" : right===null ? "👆 幹の右端をタップ" : "✅ 2点ロック完了"}
+              {left===null ? `👆 ${labelLeft||"幹の左端"}をタップ` : right===null ? `👆 ${labelRight||"幹の右端"}をタップ` : "✅ 2点ロック完了"}
             </span>
           </div>
           {/* ロック状態 */}
           <div style={{ position:"absolute", top:10, left:10, display:"flex", flexDirection:"column", gap:4 }}>
-            <div style={{ background:left!==null?"rgba(116,179,206,0.85)":"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:left!==null?"#fff":"#aaa" }}>{left!==null?"✅ 左端ロック済":"① 左端をタップ"}</div>
-            <div style={{ background:right!==null?"rgba(255,209,102,0.85)":"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:right!==null?"#000":"#aaa" }}>{right!==null?"✅ 右端ロック済":"② 右端をタップ"}</div>
+            <div style={{ background:left!==null?"rgba(116,179,206,0.85)":"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:left!==null?"#fff":"#aaa" }}>{left!==null?`✅ ${labelLeft||"左端"}ロック済`:`① ${labelLeft||"左端"}をタップ`}</div>
+            <div style={{ background:right!==null?"rgba(255,209,102,0.85)":"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:right!==null?"#000":"#aaa" }}>{right!==null?`✅ ${labelRight||"右端"}ロック済`:`② ${labelRight||"右端"}をタップ`}</div>
           </div>
         </>}
       </div>

@@ -625,6 +625,78 @@ function SpreadApp({ prof, trees, onSaveTree, onBack }) {
 // ================================================================
 // TRUNK APP（幹周り測定）
 // ================================================================
+
+// ================================================================
+// TRUNK TAP VIEW（幹周り：画面タップ方式）
+// ================================================================
+function TrunkTapView({ videoRef, cameraOn, startAll, sensorOn, left, right, onLockLeft, onLockRight, onRedo }) {
+  const containerRef = useRef(null);
+
+  const handleTap = (e) => {
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const ratio = +(x / rect.width).toFixed(3);
+    if (left === null) {
+      onLockLeft(ratio);
+    } else if (right === null) {
+      onLockRight(ratio);
+    }
+  };
+
+  const leftPx = left !== null && containerRef.current ? left * containerRef.current.clientWidth : null;
+  const rightPx = right !== null && containerRef.current ? right * containerRef.current.clientWidth : null;
+
+  return (
+    <div>
+      <div ref={containerRef}
+        style={{ position:"relative", borderRadius:16, overflow:"hidden", marginBottom:12, background:"#000", aspectRatio:"4/3", cursor: cameraOn ? "crosshair" : "default" }}
+        onClick={handleTap} onTouchEnd={e => { e.preventDefault(); handleTap(e); }}>
+        <video ref={videoRef} autoPlay playsInline muted style={{ width:"100%", height:"100%", objectFit:"cover", display:cameraOn?"block":"none" }} />
+        {!cameraOn && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"#f0f7f0" }}>
+          <p style={{ color:"#5a8c6a", fontSize:13, textAlign:"center" }}>📷<br/>カメラ起動後に映像が表示されます</p>
+        </div>}
+        {cameraOn && <>
+          {/* 中央の縦ガイドライン */}
+          <div style={{ position:"absolute", left:"50%", top:"5%", bottom:"5%", width:1, background:"rgba(45,106,79,0.3)", transform:"translateX(-50%)", pointerEvents:"none" }} />
+          {/* 十字線 */}
+          <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:40, height:40, pointerEvents:"none" }}>
+            <div style={{ position:"absolute", top:"50%", left:0, right:0, height:2, background:"#2d6a4f", opacity:0.7, transform:"translateY(-50%)" }} />
+            <div style={{ position:"absolute", left:"50%", top:0, bottom:0, width:2, background:"#2d6a4f", opacity:0.7, transform:"translateX(-50%)" }} />
+          </div>
+          {/* 左端ライン */}
+          {leftPx !== null && <div style={{ position:"absolute", left:leftPx, top:0, bottom:0, width:3, background:BLUE, opacity:0.9, transform:"translateX(-50%)", pointerEvents:"none", boxShadow:`0 0 8px ${BLUE}` }}>
+            <span style={{ position:"absolute", top:8, left:6, fontSize:11, color:BLUE, background:"rgba(0,0,0,0.7)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>✅ 左端</span>
+          </div>}
+          {/* 右端ライン */}
+          {rightPx !== null && <div style={{ position:"absolute", left:rightPx, top:0, bottom:0, width:3, background:GOLD, opacity:0.9, transform:"translateX(-50%)", pointerEvents:"none", boxShadow:`0 0 8px ${GOLD}` }}>
+            <span style={{ position:"absolute", top:28, left:6, fontSize:11, color:GOLD, background:"rgba(0,0,0,0.7)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>✅ 右端</span>
+          </div>}
+          {/* 2本ロック時：幅を示す帯 */}
+          {leftPx !== null && rightPx !== null && <div style={{ position:"absolute", top:0, bottom:0, left:Math.min(leftPx, rightPx), width:Math.abs(rightPx-leftPx), background:"rgba(126,203,161,0.15)", pointerEvents:"none" }} />}
+          {/* 指示テキスト */}
+          <div style={{ position:"absolute", bottom:10, left:0, right:0, textAlign:"center", pointerEvents:"none" }}>
+            <span style={{ fontSize:13, color:"#fff", background:"rgba(0,0,0,0.6)", padding:"5px 14px", borderRadius:20, fontFamily:"inherit" }}>
+              {left===null ? "👆 幹の左端をタップ" : right===null ? "👆 幹の右端をタップ" : "✅ 2点ロック完了"}
+            </span>
+          </div>
+          {/* ロック状態 */}
+          <div style={{ position:"absolute", top:10, left:10, display:"flex", flexDirection:"column", gap:4 }}>
+            <div style={{ background:left!==null?"rgba(116,179,206,0.85)":"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:left!==null?"#fff":"#aaa" }}>{left!==null?"✅ 左端ロック済":"① 左端をタップ"}</div>
+            <div style={{ background:right!==null?"rgba(255,209,102,0.85)":"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:right!==null?"#000":"#aaa" }}>{right!==null?"✅ 右端ロック済":"② 右端をタップ"}</div>
+          </div>
+        </>}
+      </div>
+      <div style={CARD}>
+        {!sensorOn
+          ? <button style={PRI} onClick={startAll}>📷　カメラを起動する</button>
+          : left !== null && <button onClick={onRedo} style={{ ...GHO, marginBottom:0 }}>🔄 やり直す</button>
+        }
+      </div>
+    </div>
+  );
+}
+
 function TrunkApp({ prof, trees, onSaveTree, onBack }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
@@ -638,12 +710,18 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
   const shown = liveGamma??0; const canCalc = left!==null&&right!==null&&!!dist;
   const doCalc = () => {
     if (!canCalc) return; stopCamera();
-    const lRad = Math.abs(left) * Math.PI / 180;
-    const rRad = Math.abs(right) * Math.PI / 180;
-    const diamM = +(parseFloat(dist) * (Math.tan(lRad) + Math.tan(rRad))).toFixed(3);
+    // left/right は画面上のX座標比率（0〜1）
+    // カメラの水平視野角 約60度を想定
+    const FOV = 60;
+    const leftAngle = (left - 0.5) * FOV;
+    const rightAngle = (right - 0.5) * FOV;
+    const lRad = Math.abs(leftAngle) * Math.PI / 180;
+    const rRad = Math.abs(rightAngle) * Math.PI / 180;
+    const d = parseFloat(dist);
+    const diamM = +(d * (Math.tan(lRad) + Math.tan(rRad))).toFixed(3);
     const diamCm = +(diamM * 100).toFixed(1);
     const circCm = +(diamCm * Math.PI).toFixed(1);
-    setResult({ diam: diamCm, circ: circCm, d:parseFloat(dist), leftDeg:left, rightDeg:right });
+    setResult({ diam: diamCm, circ: circCm, d, leftPct: left, rightPct: right, leftAngle: +leftAngle.toFixed(1), rightAngle: +rightAngle.toFixed(1) });
     setPg(3);
   };
   const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLiveGamma(null); setLeft(null); setRight(null); setResult(null); setShowSave(false); };
@@ -700,14 +778,13 @@ function TrunkApp({ prof, trees, onSaveTree, onBack }) {
         <button style={GHO} onClick={() => setPg(0)}>← 戻る</button>
       </div>}
       {pg===2&&<div>
-        <CameraView videoRef={videoRef} cameraOn={cameraOn} sensorOn={sensorOn} shown={shown} lock1={left} lock2={right} label1="幹左" label2="幹右" color1={BLUE} color2={GOLD} isVertical={false} />
-        <LockButtons sensorOn={sensorOn} startAll={startAll} lock1={left} lock2={right}
-          onLock1={() => { if (gammaRef.current!=null) setLeft(+gammaRef.current.toFixed(1)); }}
-          onLock2={() => { if (gammaRef.current!=null) setRight(+gammaRef.current.toFixed(1)); }}
-          onRedo1={() => { setLeft(null); setRight(null); }} onRedo2={() => setRight(null)}
-          label1="幹左端" label2="幹右端" color1={BLUE} color2={GOLD} hint1="体ごと左に向いて幹左端に照準" hint2="体ごと右に向いて幹右端に照準" />
+        {/* タップ方式：カメラ映像上で幹の左端・右端を直接タップ */}
+        <TrunkTapView videoRef={videoRef} cameraOn={cameraOn} startAll={startAll} sensorOn={sensorOn}
+          left={left} right={right}
+          onLockLeft={v => setLeft(v)} onLockRight={v => setRight(v)}
+          onRedo={() => { setLeft(null); setRight(null); }} />
         <button onClick={doCalc} style={{ ...PRI, background:canCalc?"#2a4a1a":"#1a2a1a", borderColor:canCalc?GOLD:"#4a7c5a", color:canCalc?GOLD:"#4a7c5a", cursor:canCalc?"pointer":"not-allowed" }}>
-          🌲　幹周りを計算する {!canCalc&&(left===null?"（左端をロック）":right===null?"（右端をロック）":"（距離を入力）")}
+          🌲　幹周りを計算する {!canCalc&&(left===null?"（左端をタップ）":right===null?"（右端をタップ）":"（距離を入力）")}
         </button>
         <button style={GHO} onClick={() => { setPg(1); stopCamera(); }}>← 距離の入力に戻る</button>
       </div>}

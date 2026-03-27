@@ -1208,158 +1208,119 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
 async function saveTreeImage(tree) {
   const m = tree.measurements || {};
 
+  // iPhoneの写真比率 3:4（縦長）
+  const W = 1080, H = 1440;
   const canvas = document.createElement("canvas");
-  const W = 1080, H = 1350; // 4:5 縦長（Instagram風）
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
 
-  // 背景グラデーション
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#0c1820");
-  bg.addColorStop(0.5, "#1a2e3a");
-  bg.addColorStop(1, "#0a1f14");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // 写真を描画
+  // ── 背景：写真を全面に表示 ──
   if (tree.photo) {
     await new Promise(resolve => {
       const img = new Image();
       img.onload = () => {
-        const ph = H * 0.52;
-        // cover fit
-        const scale = Math.max(W / img.width, ph / img.height);
+        // cover fit（全面）
+        const scale = Math.max(W / img.width, H / img.height);
         const sw = img.width * scale, sh = img.height * scale;
-        const sx = (W - sw) / 2, sy = (ph - sh) / 2;
+        const sx = (W - sw) / 2, sy = (H - sh) / 2;
         ctx.drawImage(img, sx, sy, sw, sh);
-        // 写真下部グラデーションオーバーレイ
-        const ov = ctx.createLinearGradient(0, ph * 0.5, 0, ph);
-        ov.addColorStop(0, "rgba(10,31,20,0)");
-        ov.addColorStop(1, "rgba(10,31,20,0.9)");
-        ctx.fillStyle = ov;
-        ctx.fillRect(0, 0, W, ph);
         resolve();
       };
       img.onerror = resolve;
       img.src = tree.photo;
     });
   } else {
-    // 写真なし：緑の背景に絵文字
-    ctx.fillStyle = "rgba(45,106,79,0.3)";
-    ctx.fillRect(0, 0, W, H * 0.52);
-    ctx.font = "200px serif";
+    // 写真なし：グラデーション背景
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#0c1820");
+    bg.addColorStop(1, "#0a2a14");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = "220px serif";
     ctx.textAlign = "center";
-    ctx.fillText("🌳", W / 2, H * 0.28);
+    ctx.fillText("🌳", W / 2, H * 0.45);
   }
 
-  const PH = H * 0.52; // 写真エリア高さ
+  // ── 下部グラデーション（名前エリア） ──
+  const nameGrad = ctx.createLinearGradient(0, H * 0.62, 0, H);
+  nameGrad.addColorStop(0, "rgba(0,0,0,0)");
+  nameGrad.addColorStop(0.4, "rgba(0,0,0,0.55)");
+  nameGrad.addColorStop(1, "rgba(0,0,0,0.82)");
+  ctx.fillStyle = nameGrad;
+  ctx.fillRect(0, H * 0.62, W, H * 0.38);
 
-  // アプリ名（左上）
-  ctx.font = "bold 36px 'Hiragino Mincho ProN', Georgia, serif";
-  ctx.fillStyle = "rgba(126,203,161,0.9)";
-  ctx.textAlign = "left";
-  ctx.fillText("大きな木", 48, 56);
+  // ── 右側縦帯（測定値エリア）──
+  const sideGrad = ctx.createLinearGradient(W * 0.72, 0, W, 0);
+  sideGrad.addColorStop(0, "rgba(0,0,0,0)");
+  sideGrad.addColorStop(0.3, "rgba(0,0,0,0.45)");
+  sideGrad.addColorStop(1, "rgba(0,0,0,0.65)");
+  ctx.fillStyle = sideGrad;
+  ctx.fillRect(W * 0.72, 0, W * 0.28, H * 0.75);
 
-  // 木の名前（写真下部）
-  ctx.font = "bold 72px 'Hiragino Mincho ProN', Georgia, serif";
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "left";
-  ctx.shadowColor = "rgba(0,0,0,0.8)";
-  ctx.shadowBlur = 12;
-  // 長い名前は折り返し
-  const nameWords = tree.name;
-  if (ctx.measureText(nameWords).width > W - 96) {
-    ctx.font = "bold 54px 'Hiragino Mincho ProN', Georgia, serif";
-  }
-  ctx.fillText(nameWords, 48, PH - 80);
-  ctx.shadowBlur = 0;
-
-  // 樹種・場所タグ
-  ctx.font = "32px 'Hiragino Mincho ProN', Georgia, serif";
-  ctx.fillStyle = "#7ecba1";
-  ctx.textAlign = "left";
-  let tagX = 48;
-  if (tree.species) {
-    ctx.fillText("🌿 " + tree.species, tagX, PH - 34);
-    tagX += ctx.measureText("🌿 " + tree.species).width + 24;
-  }
-  if (tree.location) {
-    ctx.fillStyle = "#74b3ce";
-    ctx.fillText("📍 " + tree.location, tagX, PH - 34);
-  }
-
-  // 区切り線
-  ctx.strokeStyle = "rgba(126,203,161,0.3)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(48, PH + 20);
-  ctx.lineTo(W - 48, PH + 20);
-  ctx.stroke();
-
-  // 測定値グリッド
+  // ── 測定値（右端・縦並び・控えめ） ──
   const measItems = [
-    m.height ? { label: "樹　高", value: m.height, unit: "m", color: "#7ecba1" } : null,
-    m.spread ? { label: "枝張り", value: m.spread, unit: "m", color: "#ffd166" } : null,
+    m.height ? { label: "樹高",   value: m.height, unit: "m",  color: "#7ecba1" } : null,
     m.trunk  ? { label: "幹周り", value: m.trunk,  unit: "cm", color: "#74b3ce" } : null,
-    m.age    ? { label: "推定樹齢", value: m.age,  unit: "年", color: "#c4a882" } : null,
+    m.spread ? { label: "枝張り", value: m.spread, unit: "m",  color: "#ffd166" } : null,
+    m.age    ? { label: "推定樹齢",value: m.age,   unit: "年", color: "#c4a882" } : null,
   ].filter(Boolean);
 
-  if (measItems.length > 0) {
-    const cols = Math.min(measItems.length, 2);
-    const rows = Math.ceil(measItems.length / cols);
-    const cellW = (W - 96 - (cols - 1) * 24) / cols;
-    const cellH = 160;
-    const startY = PH + 44;
+  const RX = W - 52; // 右端X
+  let MY = 80;       // 測定値の開始Y
+  ctx.textAlign = "right";
+  ctx.shadowColor = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur = 8;
 
-    measItems.forEach((item, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = 48 + col * (cellW + 24);
-      const y = startY + row * (cellH + 16);
+  measItems.forEach(item => {
+    // ラベル
+    ctx.font = "26px 'Hiragino Mincho ProN', Georgia, serif";
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillText(item.label, RX, MY);
+    MY += 34;
+    // 値＋単位
+    ctx.font = "bold 54px 'Hiragino Mincho ProN', Georgia, serif";
+    ctx.fillStyle = item.color;
+    ctx.fillText(item.value, RX - 36, MY);
+    ctx.font = "26px 'Hiragino Mincho ProN', Georgia, serif";
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillText(item.unit, RX, MY);
+    MY += 56;
+  });
+  ctx.shadowBlur = 0;
 
-      // セル背景
-      ctx.fillStyle = "rgba(255,255,255,0.05)";
-      roundRect(ctx, x, y, cellW, cellH, 16);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(126,203,161,0.2)";
-      ctx.lineWidth = 1;
-      roundRect(ctx, x, y, cellW, cellH, 16);
-      ctx.stroke();
+  // ── 木の名前（中央下） ──
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = 16;
+  ctx.textAlign = "center";
 
-      // ラベル
-      ctx.font = "28px 'Hiragino Mincho ProN', Georgia, serif";
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.textAlign = "center";
-      ctx.fillText(item.label, x + cellW / 2, y + 42);
-
-      // 値
-      ctx.font = "bold 80px 'Hiragino Mincho ProN', Georgia, serif";
-      ctx.fillStyle = item.color;
-      ctx.textAlign = "center";
-      ctx.fillText(item.value, x + cellW / 2, y + 120);
-
-      // 単位
-      ctx.font = "28px 'Hiragino Mincho ProN', Georgia, serif";
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      const vw = ctx.measureText(item.value).width;
-      ctx.font = "bold 80px 'Hiragino Mincho ProN', Georgia, serif";
-      const vw2 = ctx.measureText(item.value).width;
-      ctx.font = "28px sans-serif";
-      ctx.fillText(item.unit, x + cellW / 2 + vw2 / 2 + 10, y + 116);
-    });
+  // 樹種・場所（名前の上）
+  const subParts = [tree.species, tree.location].filter(Boolean).join("  ·  ");
+  if (subParts) {
+    ctx.font = "34px 'Hiragino Mincho ProN', Georgia, serif";
+    ctx.fillStyle = "rgba(126,203,161,0.9)";
+    ctx.fillText(subParts, W / 2, H - 210);
   }
 
-  // 日付・出典
-  const bottomY = H - 48;
-  ctx.font = "26px 'Hiragino Mincho ProN', Georgia, serif";
-  ctx.fillStyle = "rgba(126,203,161,0.5)";
-  ctx.textAlign = "left";
-  ctx.fillText("記録日：" + tree.updatedAt, 48, bottomY);
-  ctx.textAlign = "right";
-  ctx.fillStyle = "rgba(126,203,161,0.35)";
-  ctx.fillText("大きな木 App", W - 48, bottomY);
+  // 木の名前
+  ctx.fillStyle = "#ffffff";
+  let nameFontSize = 88;
+  ctx.font = `bold ${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
+  while (ctx.measureText(tree.name).width > W - 120 && nameFontSize > 48) {
+    nameFontSize -= 4;
+    ctx.font = `bold ${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
+  }
+  ctx.fillText(tree.name, W / 2, H - 120);
 
-  // PNG ダウンロード
+  // 記録日・アプリ名（最下部）
+  ctx.font = "24px 'Hiragino Mincho ProN', Georgia, serif";
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.textAlign = "left";
+  ctx.fillText(tree.updatedAt, 52, H - 52);
+  ctx.textAlign = "right";
+  ctx.fillText("大きな木", W - 52, H - 52);
+  ctx.shadowBlur = 0;
+
+  // ── PNG 保存 ──
   canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

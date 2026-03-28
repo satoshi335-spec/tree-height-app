@@ -1556,6 +1556,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [showPdf, setShowPdf] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null); // 画像プレビュー
   const fileRef = useRef();
   const detailPhotoRef = useRef();
   const [photo, setPhoto] = useState(null);
@@ -1574,11 +1575,6 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
     const t = { id: editing?.id||newId(), name:name.trim(), species, location, note, photo, gps, measurements:{height,spread,trunk,age}, createdAt:editing?.createdAt||today(), updatedAt:today() };
     onUpdate(editing ? trees.map(x => x.id===t.id?t:x) : [t,...trees]);
     if (!opts.skipNav) { setSelected(t); setView("detail"); }
-    // 写真があり測定値がある場合、オーバーレイ画像を自動保存
-    const hasMeas = height || spread || trunk || age;
-    if (photo && hasMeas && !opts.skipNav) {
-      try { await saveTreeImage(t); } catch(e) { console.warn("自動保存スキップ:", e); }
-    }
     return t; // 保存したtreeを返す
   };
   const doDelete = (id) => { if (!window.confirm("削除しますか？")) return; onUpdate(trees.filter(t=>t.id!==id)); setSelected(null); setView("list"); };
@@ -1662,19 +1658,27 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
         )) : <div style={{ textAlign:"center", padding:"40px 20px" }}><p style={{ fontSize:36, marginBottom:12 }}>🌱</p><p style={{ fontSize:13, color:"#5a8c6a" }}>{search?"該当なし":"まだ登録されていません"}</p></div>}
 
         {showPdf && <PdfModal trees={trees} onClose={() => setShowPdf(false)} />}
+
+        {/* 画像プレビューモーダル */}
+        {previewImage && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:200, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <img src={previewImage} alt="記録画像" style={{ maxWidth:"100%", maxHeight:"70vh", borderRadius:12, display:"block" }} />
+          <p style={{ color:"#a8d5b5", fontSize:14, margin:"16px 0 8px", textAlign:"center", lineHeight:1.8 }}>
+            👆 画像を<strong>長押し</strong>して<br/>「写真に保存」を選んでください
+          </p>
+          <button onClick={() => setPreviewImage(null)} style={{ marginTop:8, padding:"12px 32px", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:12, color:"#fff", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+            閉じる
+          </button>
+        </div>}
       </>}
 
       {/* WIZARD */}
       {view==="wizard"&&<RegisterWizard
         prof={loadProfile()}
         trees={trees}
-        onComplete={async (t) => {
+        onComplete={(t) => {
           onUpdate([t, ...trees]);
           setSelected(t);
           setView("detail");
-          if (t.photo && (t.measurements?.height||t.measurements?.trunk||t.measurements?.spread)) {
-            try { await saveTreeImage(t); } catch(e) {}
-          }
         }}
         onBack={() => setView("list")}
       />}
@@ -1851,9 +1855,12 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           </div>}
         </div>}
         {/* 画像保存ボタン */}
-        <button onClick={() => saveTreeImage(cur)}
+        <button onClick={async () => {
+            const dataUrl = await saveTreeImage(cur);
+            if (dataUrl) setPreviewImage(dataUrl);
+          }}
           style={{ width:"100%", padding:"13px", background:"rgba(126,203,161,0.15)", border:`1px solid ${GRN}`, borderRadius:12, color:GRN, fontSize:14, cursor:"pointer", marginBottom:8, fontFamily:"inherit", letterSpacing:1 }}>
-          📸　写真アルバムに保存する
+          📸　記録画像を作成する
         </button>
         {/* 詳細画面からも測定ボタン */}
         <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
@@ -1999,17 +2006,8 @@ async function saveTreeImage(tree) {
   ctx.fillText("大きな木", W - 52, H - 52);
   ctx.shadowBlur = 0;
 
-  // ── PNG 保存 ──
-  canvas.toBlob(blob => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = (tree.name || "tree") + "_記録.png";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }, "image/png");
+  // ── DataURL を返す（表示用）──
+  return canvas.toDataURL("image/png");
 }
 
 function roundRect(ctx, x, y, w, h, r) {

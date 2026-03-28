@@ -593,14 +593,23 @@ function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
   const [dist, setDist] = useState(""); const [eyeH, setEyeH] = useState(prof.eyeH||"1.5");
   const [bodyH, setBodyH] = useState(prof.bodyH||""); const [walkCount, setWalkCount] = useState("");
   const [stride, setStride] = useState(prof.stride||null); const [distMode, setDistMode] = useState(1);
-  const [liveDeg, setLiveDeg] = useState(null); const [bot, setBot] = useState(null); const [top, setTop] = useState(null);
+  const [top, setTop] = useState(null); const [bot, setBot] = useState(null);
   const [result, setResult] = useState(null); const [showSave, setShowSave] = useState(false);
-  const liveRef = useRef(null);
-  const onOrient = useCallback(e => { if (e.beta==null) return; let v = +(e.beta-90).toFixed(1); v = Math.max(-89,Math.min(89,v)); liveRef.current=v; setLiveDeg(v); }, []);
-  const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(onOrient);
-  const shown = liveDeg??0; const canCalc = bot!==null&&top!==null&&!!dist&&!!eyeH;
-  const doCalc = () => { if (!canCalc) return; stopCamera(); setResult({ height: calcHeight2(parseFloat(dist),top,bot,parseFloat(eyeH)), d: parseFloat(dist), e: parseFloat(eyeH), topDeg: top, botDeg: bot }); setPg(3); };
-  const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setLiveDeg(null); setBot(null); setTop(null); setResult(null); setShowSave(false); };
+  const dummyOrient = useCallback(() => {}, []);
+  const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(dummyOrient);
+  const canCalc = top!==null&&bot!==null&&!!dist&&!!eyeH;
+  const doCalc = () => {
+    if (!canCalc) return; stopCamera();
+    const d = parseFloat(dist), e = parseFloat(eyeH);
+    // タップ方式：Y座標比率から角度を計算（カメラFOV縦 約45°）
+    const VFOV = 45;
+    const topAngle = -(top - 0.5) * VFOV;   // 上タップ → 正の仰角
+    const botAngle = -(bot - 0.5) * VFOV;   // 下タップ → 負の俯角
+    const h = +(d * (Math.tan(topAngle * Math.PI/180) - Math.tan(botAngle * Math.PI/180)) + e).toFixed(1);
+    setResult({ height: Math.max(0.1, h), d, e, topPct: top, botPct: bot, topAngle: +topAngle.toFixed(1), botAngle: +botAngle.toFixed(1) });
+    setPg(3);
+  };
+  const reset = () => { stopCamera(); setPg(0); setDist(""); setWalkCount(""); setTop(null); setBot(null); setResult(null); setShowSave(false); };
 
   return (
     <div>
@@ -620,11 +629,11 @@ function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
             <line x1="232" y1="18" x2="232" y2="125" stroke="#a8d5b5" strokeWidth="1" strokeDasharray="3,2"/>
             <text x="246" y="75" fill="#a8d5b5" fontSize="9">樹高</text>
           </svg>
-          <p style={{ fontSize:11, color:"#5a8c6a", textAlign:"center", margin:"8px 0 0", lineHeight:1.8 }}>① 梢（てっぺん）をロック → ② 根元（地面）をロック</p>
+          <p style={{ fontSize:11, color:"#5a8c6a", textAlign:"center", margin:"8px 0 0", lineHeight:1.8 }}>① 梢（てっぺん）をタップ → ② 根元（地面）をタップ</p>
           <div style={{ background:"rgba(255,209,102,0.1)", border:"1px solid rgba(255,209,102,0.25)", borderRadius:8, padding:"8px 12px", marginTop:10 }}>
             <p style={{ fontSize:11, color:GOLD, margin:0, lineHeight:1.7 }}>
-              💡 上から下の順に測定します<br/>
-              梢に向けてロック後、カメラを下げて根元でロック
+              💡 カメラに木全体が映るように離れてから<br/>
+              梢・根元の順にタップしてください
             </p>
           </div>
         </div>
@@ -637,15 +646,12 @@ function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
         <button style={GHO} onClick={() => setPg(0)}>← 戻る</button>
       </div>}
       {pg===2&&<div>
-        {/* ① 梢 → ② 根元 の順に変更 */}
-        <CameraView videoRef={videoRef} cameraOn={cameraOn} sensorOn={sensorOn} shown={shown} lock1={top} lock2={bot} label1="梢" label2="根元" color1={GOLD} color2={BLUE} isVertical />
-        <LockButtons sensorOn={sensorOn} startAll={startAll} lock1={top} lock2={bot}
-          onLock1={() => { if (liveRef.current!=null) setTop(+liveRef.current.toFixed(1)); }}
-          onLock2={() => { if (liveRef.current!=null) setBot(+liveRef.current.toFixed(1)); }}
-          onRedo1={() => { setTop(null); setBot(null); }} onRedo2={() => setBot(null)}
-          label1="梢（上）" label2="根元（下）" color1={GOLD} color2={BLUE} hint1="カメラを梢（てっぺん）に向けて" hint2="カメラを根元（地面）に向けて" />
+        <HeightTapView videoRef={videoRef} cameraOn={cameraOn} startAll={startAll} sensorOn={sensorOn}
+          top={top} bot={bot}
+          onLockTop={v => setTop(v)} onLockBot={v => setBot(v)}
+          onRedo={() => { setTop(null); setBot(null); }} />
         <button onClick={doCalc} style={{ ...PRI, background:canCalc?"#2a4a1a":"#1a2a1a", borderColor:canCalc?GOLD:"#4a7c5a", color:canCalc?GOLD:"#4a7c5a", cursor:canCalc?"pointer":"not-allowed" }}>
-          📐　樹高を計算する {!canCalc&&(top===null?"（梢をロック）":bot===null?"（根元をロック）":"（距離を入力）")}
+          📐　樹高を計算する {!canCalc&&(top===null?"（梢をタップ）":bot===null?"（根元をタップ）":"（距離を入力）")}
         </button>
         <button style={GHO} onClick={() => { setPg(1); stopCamera(); }}>← 距離の入力に戻る</button>
       </div>}
@@ -665,7 +671,7 @@ function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
           </div>
         </div>
         <div style={{ ...CARD, padding:"14px 16px" }}>
-          {[["水平距離",`${result.d} m`],["梢",`${result.topDeg>0?"+":""}${result.topDeg}°`],["根元",`${result.botDeg>0?"+":""}${result.botDeg}°`],["角度差",`${(result.topDeg-result.botDeg).toFixed(1)}°`],["目の高さ",`${result.e} m`]].map(([l,v],i,a)=>(
+          {[["水平距離",`${result.d} m`],["梢の仰角",`+${result.topAngle}°`],["根元の俯角",`${result.botAngle}°`],["角度差",`${(result.topAngle - result.botAngle).toFixed(1)}°`],["目の高さ",`${result.e} m`]].map(([l,v],i,a)=>(
             <div key={l} style={{ display:"flex", justifyContent:"space-between", paddingBottom:i<a.length-1?7:0, marginBottom:i<a.length-1?7:0, borderBottom:i<a.length-1?"1px solid rgba(126,203,161,0.1)":"none" }}>
               <span style={{ fontSize:11, color:"#5a9070" }}>{l}</span><span style={{ fontSize:13, color:"#1a3a2a" }}>{v}</span>
             </div>
@@ -790,6 +796,131 @@ function SpreadApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
   );
 }
 
+
+
+// ================================================================
+// HEIGHT TAP VIEW（樹高：画面タップ方式・縦）
+// ================================================================
+function HeightTapView({ videoRef, cameraOn, startAll, sensorOn, top, bot, onLockTop, onLockBot, onRedo }) {
+  const containerRef = useRef(null);
+  const draggingRef = useRef(null); // "top" | "bot" | null
+
+  const getY = (e) => {
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return Math.max(0, Math.min(1, +((clientY - rect.top) / rect.height).toFixed(3)));
+  };
+
+  const onTouchStart = (e) => {
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientY = e.touches[0].clientY;
+    const yPx = clientY - rect.top;
+    const SNAP = 28;
+    const topPx = top !== null ? top * rect.height : null;
+    const botPx = bot !== null ? bot * rect.height : null;
+    if (topPx !== null && Math.abs(yPx - topPx) < SNAP) { draggingRef.current = "top"; return; }
+    if (botPx !== null && Math.abs(yPx - botPx) < SNAP) { draggingRef.current = "bot"; return; }
+    draggingRef.current = null;
+  };
+
+  const onTouchMove = (e) => {
+    if (!draggingRef.current) return;
+    e.preventDefault();
+    const ratio = getY(e);
+    if (draggingRef.current === "top") onLockTop(ratio);
+    if (draggingRef.current === "bot") onLockBot(ratio);
+  };
+
+  const onTouchEnd = (e) => {
+    if (draggingRef.current) { draggingRef.current = null; return; }
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientY = e.changedTouches[0].clientY;
+    const ratio = Math.max(0, Math.min(1, +((clientY - rect.top) / rect.height).toFixed(3)));
+    if (top === null) onLockTop(ratio);
+    else if (bot === null) onLockBot(ratio);
+  };
+
+  const onMouseDown = (e) => {
+    if (!cameraOn) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const yPx = e.clientY - rect.top;
+    const SNAP = 28;
+    const tPx = top !== null ? top * rect.height : null;
+    const bPx = bot !== null ? bot * rect.height : null;
+    if (tPx !== null && Math.abs(yPx - tPx) < SNAP) { draggingRef.current = "top"; return; }
+    if (bPx !== null && Math.abs(yPx - bPx) < SNAP) { draggingRef.current = "bot"; return; }
+    const ratio = Math.max(0, Math.min(1, +((yPx) / rect.height).toFixed(3)));
+    if (top === null) onLockTop(ratio);
+    else if (bot === null) onLockBot(ratio);
+  };
+  const onMouseMove = (e) => {
+    if (!draggingRef.current) return;
+    const ratio = getY(e);
+    if (draggingRef.current === "top") onLockTop(ratio);
+    if (draggingRef.current === "bot") onLockBot(ratio);
+  };
+  const onMouseUp = () => { draggingRef.current = null; };
+
+  const H = containerRef.current ? containerRef.current.clientHeight : 0;
+  const topPx = top !== null ? top * H : null;
+  const botPx = bot !== null ? bot * H : null;
+  const isDraggingTop = draggingRef.current === "top";
+  const isDraggingBot = draggingRef.current === "bot";
+
+  return (
+    <div>
+      <div ref={containerRef}
+        style={{ position:"relative", borderRadius:16, overflow:"hidden", marginBottom:12, background:"#000", aspectRatio:"3/4", touchAction:"none" }}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
+        <video ref={videoRef} autoPlay playsInline muted style={{ width:"100%", height:"100%", objectFit:"cover", display:cameraOn?"block":"none" }} />
+        {!cameraOn && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"#f0f7f0" }}>
+          <p style={{ color:"#5a8c6a", fontSize:13, textAlign:"center" }}>📷<br/>カメラ起動後に映像が表示されます</p>
+        </div>}
+        {cameraOn && <>
+          {/* 中央の横ガイドライン */}
+          <div style={{ position:"absolute", top:"50%", left:"5%", right:"5%", height:1, background:"rgba(45,106,79,0.3)", transform:"translateY(-50%)", pointerEvents:"none" }} />
+          {/* 十字線 */}
+          <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:44, height:44, pointerEvents:"none" }}>
+            <div style={{ position:"absolute", top:"50%", left:0, right:0, height:2, background:"#2d6a4f", opacity:0.7, transform:"translateY(-50%)" }} />
+            <div style={{ position:"absolute", left:"50%", top:0, bottom:0, width:2, background:"#2d6a4f", opacity:0.7, transform:"translateX(-50%)" }} />
+          </div>
+          {/* 梢ライン（横・GOLD） */}
+          {topPx !== null && <div style={{ position:"absolute", top:topPx, left:0, right:0, height:isDraggingTop?5:3, background:GOLD, opacity:isDraggingTop?1:0.95, transform:"translateY(-50%)", pointerEvents:"none", boxShadow:`0 0 ${isDraggingTop?18:10}px ${GOLD}`, transition:"height 0.1s" }}>
+            <div style={{ position:"absolute", left:"50%", top:"50%", transform:"translate(-50%,-50%)", width:28, height:28, borderRadius:"50%", background:GOLD, border:"3px solid #fff", boxShadow:"0 2px 8px rgba(0,0,0,0.4)" }} />
+            <span style={{ position:"absolute", right:10, top:6, fontSize:11, color:GOLD, background:"rgba(0,0,0,0.75)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>✅ 梢</span>
+          </div>}
+          {/* 根元ライン（横・BLUE） */}
+          {botPx !== null && <div style={{ position:"absolute", top:botPx, left:0, right:0, height:isDraggingBot?5:3, background:BLUE, opacity:isDraggingBot?1:0.95, transform:"translateY(-50%)", pointerEvents:"none", boxShadow:`0 0 ${isDraggingBot?18:10}px ${BLUE}`, transition:"height 0.1s" }}>
+            <div style={{ position:"absolute", left:"50%", top:"50%", transform:"translate(-50%,-50%)", width:28, height:28, borderRadius:"50%", background:BLUE, border:"3px solid #fff", boxShadow:"0 2px 8px rgba(0,0,0,0.4)" }} />
+            <span style={{ position:"absolute", right:10, bottom:6, fontSize:11, color:BLUE, background:"rgba(0,0,0,0.75)", padding:"2px 8px", borderRadius:4, whiteSpace:"nowrap", fontWeight:"bold" }}>✅ 根元</span>
+          </div>}
+          {/* 2本ロック時：高さを示す帯 */}
+          {topPx !== null && botPx !== null && <div style={{ position:"absolute", left:0, right:0, top:Math.min(topPx, botPx), height:Math.abs(botPx-topPx), background:"rgba(126,203,161,0.12)", pointerEvents:"none" }} />}
+          {/* 指示テキスト */}
+          <div style={{ position:"absolute", bottom:10, left:0, right:0, textAlign:"center", pointerEvents:"none" }}>
+            <span style={{ fontSize:15, color:"#fff", background:"rgba(0,0,0,0.65)", padding:"8px 18px", borderRadius:20, fontFamily:"inherit", fontWeight:"bold" }}>
+              {top===null ? "👆 梢（てっぺん）をタップ" : bot===null ? "👆 根元（地面）をタップ" : "↕ ドラッグで微調整できます"}
+            </span>
+          </div>
+          {/* ロック状態 */}
+          <div style={{ position:"absolute", top:10, left:10, display:"flex", flexDirection:"column", gap:4 }}>
+            <div style={{ background:top!==null?`${GOLD}cc`:"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:top!==null?"#000":"#aaa" }}>{top!==null?"✅ 梢ロック済":"① 梢をタップ"}</div>
+            <div style={{ background:bot!==null?`${BLUE}cc`:"rgba(0,0,0,0.55)", borderRadius:6, padding:"3px 8px", fontSize:11, color:bot!==null?"#fff":"#aaa" }}>{bot!==null?"✅ 根元ロック済":"② 根元をタップ"}</div>
+          </div>
+        </>}
+      </div>
+      <div style={CARD}>
+        {!sensorOn
+          ? <button style={PRI} onClick={startAll}>📷　カメラを起動する</button>
+          : top !== null && <button onClick={onRedo} style={{ ...GHO, marginBottom:0 }}>🔄 やり直す</button>
+        }
+      </div>
+    </div>
+  );
+}
 
 // ================================================================
 // TRUNK APP（幹周り測定）

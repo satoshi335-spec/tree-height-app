@@ -588,7 +588,7 @@ function PdfModal({ trees, onClose }) {
 // ================================================================
 // HEIGHT APP
 // ================================================================
-function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName }) {
+function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName, onSaveAndMeasureSpread }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [eyeH, setEyeH] = useState(prof.eyeH||"1.5");
   const [bodyH, setBodyH] = useState(prof.bodyH||""); const [walkCount, setWalkCount] = useState("");
@@ -678,9 +678,14 @@ function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
           ))}
         </div>
         {pendingTreeId
-          ? <button style={{ ...PRI, background:"#1a3a2a", borderColor:GRN, color:GRN }} onClick={() => onSaveTree(null, pendingTreeId, { height: result.height+"" })}>
-              💾　{pendingTreeName||"この木"}に保存する
-            </button>
+          ? <>
+              <button style={{ ...PRI, background:"#1a3a2a", borderColor:GRN, color:GRN }} onClick={() => onSaveTree(null, pendingTreeId, { height: result.height+"" })}>
+                💾　{pendingTreeName||"この木"}に保存する
+              </button>
+              {onSaveAndMeasureSpread && <button style={{ ...PRI, background:"#2a4a1a", borderColor:"#a8d5b5", color:"#a8d5b5" }} onClick={() => onSaveAndMeasureSpread(result.d+"", result.height+"")}>
+                🌿　続けて枝張りを測定する
+              </button>}
+            </>
           : <button style={{ ...PRI, background:"#2a4a1a", borderColor:GOLD, color:GOLD }} onClick={() => setShowSave(true)}>💾　アルバムに保存する</button>
         }
         <button style={PRI} onClick={reset}>📐　もう一度測定する</button>
@@ -694,7 +699,7 @@ function HeightApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
 // ================================================================
 // SPREAD APP
 // ================================================================
-function SpreadApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName }) {
+function SpreadApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTreeName, initialDist }) {
   const [pg, setPg] = useState(0);
   const [dist, setDist] = useState(""); const [bodyH, setBodyH] = useState(prof.bodyH||"");
   const [walkCount, setWalkCount] = useState(""); const [stride, setStride] = useState(prof.stride||null);
@@ -704,6 +709,8 @@ function SpreadApp({ prof, trees, onSaveTree, onBack, pendingTreeId, pendingTree
   const dummyOrient = useCallback(() => {}, []);
   const { sensorOn, cameraOn, videoRef, startAll, stopCamera } = useCameraAndSensor(dummyOrient);
   const canCalc = left!==null&&right!==null&&!!dist;
+  // initialDist があれば距離入力をスキップしてpg=2から開始
+  useEffect(() => { if (initialDist) { setDist(initialDist); setPg(2); } }, [initialDist]);
   const doCalc = () => {
     if (!canCalc) return; stopCamera();
     // タップ方式：画面上のX座標比率から角度を計算（FOV 60°）
@@ -1811,6 +1818,7 @@ export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [pendingTreeId, setPendingTreeId] = useState(null);
   const [pendingTreeName, setPendingTreeName] = useState(null);
+  const [pendingDist, setPendingDist] = useState(null); // 樹高→枝張り距離引き継ぎ
   const [mapSelectedId, setMapSelectedId] = useState(null);
   const prof = loadProfile();
 
@@ -1880,8 +1888,18 @@ export default function App() {
           </>}
         </div>}
 
-        {mode==="height"&&<HeightApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
-        {mode==="spread"&&<SpreadApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
+        {mode==="height"&&<HeightApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName}
+          onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }}
+          onSaveAndMeasureSpread={pendingTreeId ? (distStr, heightStr) => {
+            // 樹高を保存して距離を引き継いで枝張り測定へ
+            updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, height: heightStr }, updatedAt:today() } : t));
+            setPendingDist(distStr);
+            setMode("spread");
+          } : null}
+          onBack={()=>setMode(null)}/>}}
+        {mode==="spread"&&<SpreadApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} initialDist={pendingDist}
+          onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setPendingDist(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }}
+          onBack={()=>{ setPendingDist(null); setMode(null); }}/>}}
         {mode==="trunk"&&<TrunkApp prof={prof} trees={trees} pendingTreeId={pendingTreeId} pendingTreeName={pendingTreeName} onSaveTree={(nt,eid,meas) => { if (pendingTreeId) { updateTrees(trees.map(t => t.id===pendingTreeId ? { ...t, measurements:{ ...t.measurements, ...meas }, updatedAt:today() } : t)); setPendingTreeId(null); setPendingTreeName(null); setMode("carte"); } else { onSaveTree(nt,eid,meas); } }} onBack={()=>setMode(null)}/>}
         {mode==="carte"&&<CarteApp trees={trees} onUpdate={updateTrees} onBack={()=>{ setMapSelectedId(null); setMode(null); }} onMeasureHeight={onMeasureHeight} onMeasureSpread={onMeasureSpread} onMeasureTrunk={onMeasureTrunk} initialSelectedId={mapSelectedId}/>}
         {mode==="map"&&<MapApp trees={trees} onSelectTree={onSelectTree} onBack={()=>setMode(null)}/>}

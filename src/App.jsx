@@ -1938,7 +1938,7 @@ async function saveTreeImage(tree) {
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
 
-  // ── 背景：写真を全面に表示 ──
+  // ── 背景：写真を全面に表示 + フィルムカメラフィルター ──
   if (tree.photo) {
     await new Promise(resolve => {
       const img = new Image();
@@ -1948,6 +1948,51 @@ async function saveTreeImage(tree) {
         const sw = img.width * scale, sh = img.height * scale;
         const sx = (W - sw) / 2, sy = (H - sh) / 2;
         ctx.drawImage(img, sx, sy, sw, sh);
+
+        // ── フィルムカメラフィルター ──
+        const imgData = ctx.getImageData(0, 0, W, H);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          let r = d[i], g = d[i+1], b = d[i+2];
+
+          // ① 彩度アップ（鮮やか）
+          const avg = (r + g + b) / 3;
+          const sat = 1.35;
+          r = avg + (r - avg) * sat;
+          g = avg + (g - avg) * sat;
+          b = avg + (b - avg) * sat;
+
+          // ② 暖色シフト（フィルム感・赤・黄を少し強く）
+          r = r * 1.08;
+          g = g * 1.02;
+          b = b * 0.90;
+
+          // ③ コントラスト（暗部を締める）
+          const cont = 1.18;
+          const mid = 128;
+          r = (r - mid) * cont + mid;
+          g = (g - mid) * cont + mid;
+          b = (b - mid) * cont + mid;
+
+          // ④ ハイライトを少しフェード（フィルムの白飛び感）
+          r = r > 220 ? 220 + (r - 220) * 0.4 : r;
+          g = g > 220 ? 220 + (g - 220) * 0.4 : g;
+          b = b > 220 ? 220 + (b - 220) * 0.4 : b;
+
+          d[i]   = Math.max(0, Math.min(255, r));
+          d[i+1] = Math.max(0, Math.min(255, g));
+          d[i+2] = Math.max(0, Math.min(255, b));
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        // ⑤ ビネット（周辺暗化）
+        const vig = ctx.createRadialGradient(W/2, H/2, H*0.28, W/2, H/2, H*0.82);
+        vig.addColorStop(0, "rgba(0,0,0,0)");
+        vig.addColorStop(0.6, "rgba(0,0,0,0.08)");
+        vig.addColorStop(1, "rgba(0,0,0,0.42)");
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, W, H);
+
         resolve();
       };
       img.onerror = resolve;

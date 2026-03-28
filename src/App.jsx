@@ -1481,27 +1481,19 @@ async function saveTreeImage(tree) {
   ctx.shadowBlur = 16;
   ctx.textAlign = "center";
 
-  // 樹種・場所（名前の上）
-  const subParts = [tree.species, tree.location].filter(Boolean).join("  ·  ");
-  if (subParts) {
-    ctx.font = "34px 'Hiragino Mincho ProN', Georgia, serif";
-    ctx.fillStyle = "rgba(126,203,161,0.9)";
-    ctx.fillText(subParts, W / 2, H - 210);
-  }
-
-  // 木の名前
-  ctx.fillStyle = "#ffffff";
-  let nameFontSize = 88;
-  ctx.font = `bold ${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
-  while (ctx.measureText(tree.name).width > W - 120 && nameFontSize > 48) {
+  // 木の名前（控えめ・中央下）
+  ctx.fillStyle = "rgba(255,255,255,0.88)";
+  let nameFontSize = 62;
+  ctx.font = `${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
+  while (ctx.measureText(tree.name).width > W - 160 && nameFontSize > 36) {
     nameFontSize -= 4;
-    ctx.font = `bold ${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
+    ctx.font = `${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
   }
-  ctx.fillText(tree.name, W / 2, H - 120);
+  ctx.fillText(tree.name, W / 2, H - 100);
 
   // 記録日・アプリ名（最下部）
   ctx.font = "24px 'Hiragino Mincho ProN', Georgia, serif";
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.fillStyle = "rgba(255,255,255,0.38)";
   ctx.textAlign = "left";
   ctx.fillText(tree.updatedAt, 52, H - 52);
   ctx.textAlign = "right";

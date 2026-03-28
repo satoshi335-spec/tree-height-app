@@ -1224,16 +1224,17 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
 
   const openNew = () => { setEditing(null); setPhoto(null); setName(""); setSpecies(""); setLocation(""); setNote(""); setHeight(""); setSpread(""); setTrunk(""); setAge(""); setAgeAuto(false); setGps(null); setView("form"); };
   const openEdit = (t) => { setEditing(t); setPhoto(t.photo); setName(t.name); setSpecies(t.species||""); setLocation(t.location||""); setNote(t.note||""); setHeight(t.measurements?.height||""); setSpread(t.measurements?.spread||""); setTrunk(t.measurements?.trunk||""); setAge(t.measurements?.age||""); setAgeAuto(false); setGps(t.gps||null); setView("form"); };
-  const doSave = async () => {
-    if (!name.trim()) { alert("木の名前を入力してください"); return; }
+  const doSave = async (opts = {}) => {
+    if (!name.trim()) { alert("木の名前を入力してください"); return null; }
     const t = { id: editing?.id||newId(), name:name.trim(), species, location, note, photo, gps, measurements:{height,spread,trunk,age}, createdAt:editing?.createdAt||today(), updatedAt:today() };
     onUpdate(editing ? trees.map(x => x.id===t.id?t:x) : [t,...trees]);
-    setSelected(t); setView("detail");
+    if (!opts.skipNav) { setSelected(t); setView("detail"); }
     // 写真があり測定値がある場合、オーバーレイ画像を自動保存
     const hasMeas = height || spread || trunk || age;
-    if (photo && hasMeas) {
+    if (photo && hasMeas && !opts.skipNav) {
       try { await saveTreeImage(t); } catch(e) { console.warn("自動保存スキップ:", e); }
     }
+    return t; // 保存したtreeを返す
   };
   const doDelete = (id) => { if (!window.confirm("削除しますか？")) return; onUpdate(trees.filter(t=>t.id!==id)); setSelected(null); setView("list"); };
   const onPhoto = async e => {
@@ -1370,7 +1371,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           <div style={{ marginBottom:10 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
               <span style={{ ...LBL, marginBottom:0 }}>樹高（m）：</span>
-              <button onClick={() => { doSave(); onMeasureHeight(editing?.id || null); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>📐 今すぐ測定</button>
+              <button onClick={async () => { const saved = await doSave({ skipNav: true }); if (saved) onMeasureHeight(saved.id); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>📐 今すぐ測定</button>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={height} onChange={e=>setHeight(e.target.value)} placeholder="未測定" /><span style={{ color:"#2d6a4f", minWidth:24, fontSize:13 }}>m</span></div>
           </div>
@@ -1379,7 +1380,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           <div style={{ marginBottom:10 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
               <span style={{ ...LBL, marginBottom:0 }}>枝張り・直径（m）：</span>
-              <button onClick={() => { doSave(); onMeasureSpread(editing?.id || null); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌿 今すぐ測定</button>
+              <button onClick={async () => { const saved = await doSave({ skipNav: true }); if (saved) onMeasureSpread(saved.id); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌿 今すぐ測定</button>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={spread} onChange={e=>setSpread(e.target.value)} placeholder="未測定" /><span style={{ color:"#2d6a4f", minWidth:24, fontSize:13 }}>m</span></div>
           </div>
@@ -1388,7 +1389,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           <div style={{ marginBottom:10 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
               <span style={{ ...LBL, marginBottom:0 }}>幹周り（cm・地上1.3m）：</span>
-              <button onClick={() => { doSave(); onMeasureTrunk(editing?.id || null); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌲 今すぐ測定</button>
+              <button onClick={async () => { const saved = await doSave({ skipNav: true }); if (saved) onMeasureTrunk(saved.id); }} style={{ fontSize:11, color:"#2d6a4f", background:"rgba(45,106,79,0.08)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:6, padding:"3px 10px", cursor:"pointer", fontFamily:"inherit" }}>🌲 今すぐ測定</button>
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}><input style={{ ...INP, fontSize:20 }} type="number" value={trunk} onChange={e=>{
               setTrunk(e.target.value);

@@ -1596,7 +1596,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
       {view==="list"&&<>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingTop:8, marginBottom:14 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <button onClick={onBack} style={{ background:"none", border:"none", color:"#2d6a4f", fontSize:22, cursor:"pointer", padding:0 }}>‹</button>
+            <button onClick={onBack} style={{ display:"flex", alignItems:"center", gap:4, background:"rgba(45,106,79,0.1)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:20, color:"#2d6a4f", fontSize:13, cursor:"pointer", padding:"6px 12px", fontFamily:"inherit" }}>‹ メニュー</button>
             <h2 style={{ fontSize:17, color:"#2d6a4f", margin:0 }}>大きな木のアルバム</h2>
           </div>
           {trees.length>0&&<button onClick={() => setShowPdf(true)} style={{ fontSize:12, color:GOLD, background:"rgba(255,209,102,0.1)", border:`1px solid rgba(255,209,102,0.35)`, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontFamily:"inherit" }}>📄 PDF出力</button>}
@@ -1659,16 +1659,6 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
 
         {showPdf && <PdfModal trees={trees} onClose={() => setShowPdf(false)} />}
 
-        {/* 画像プレビューモーダル */}
-        {previewImage && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:200, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <img src={previewImage} alt="記録画像" style={{ maxWidth:"100%", maxHeight:"70vh", borderRadius:12, display:"block" }} />
-          <p style={{ color:"#a8d5b5", fontSize:14, margin:"16px 0 8px", textAlign:"center", lineHeight:1.8 }}>
-            👆 画像を<strong>長押し</strong>して<br/>「写真に保存」を選んでください
-          </p>
-          <button onClick={() => setPreviewImage(null)} style={{ marginTop:8, padding:"12px 32px", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:12, color:"#fff", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
-            閉じる
-          </button>
-        </div>}
       </>}
 
       {/* WIZARD */}
@@ -1686,7 +1676,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
       {/* FORM */}
       {view==="form"&&<>
         <div style={{ display:"flex", alignItems:"center", gap:12, paddingTop:8, marginBottom:14 }}>
-          <button onClick={()=>setView(editing?"detail":"list")} style={{ background:"none", border:"none", color:"#2d6a4f", fontSize:22, cursor:"pointer", padding:0 }}>‹</button>
+          <button onClick={()=>setView(editing?"detail":"list")} style={{ display:"flex", alignItems:"center", gap:4, background:"rgba(45,106,79,0.1)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:20, color:"#2d6a4f", fontSize:13, cursor:"pointer", padding:"6px 12px", fontFamily:"inherit" }}>‹ {editing?"記録へ":"一覧へ"}</button>
           <h2 style={{ fontSize:17, color:"#2d6a4f", margin:0 }}>{editing?"記録を編集":"新しい木を登録"}</h2>
         </div>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={onPhoto} />
@@ -1793,7 +1783,7 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
       {view==="detail"&&cur&&<>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingTop:8, marginBottom:14 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <button onClick={()=>setView("list")} style={{ background:"none", border:"none", color:"#2d6a4f", fontSize:22, cursor:"pointer", padding:0 }}>‹</button>
+            <button onClick={()=>setView("list")} style={{ display:"flex", alignItems:"center", gap:4, background:"rgba(45,106,79,0.1)", border:"1px solid rgba(45,106,79,0.25)", borderRadius:20, color:"#2d6a4f", fontSize:13, cursor:"pointer", padding:"6px 12px", fontFamily:"inherit" }}>‹ 一覧へ</button>
             <h2 style={{ fontSize:17, color:"#2d6a4f", margin:0 }}>{cur.name}</h2>
           </div>
           <div style={{ display:"flex", gap:8 }}>
@@ -1868,6 +1858,17 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           <button onClick={() => onMeasureSpread(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(255,209,102,0.1)", border:`1px solid ${GOLD}`, borderRadius:12, color:GOLD, fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>🌿 枝張り</button>
           <button onClick={() => onMeasureTrunk(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(141,110,99,0.1)", border:"1px solid #8d6e63", borderRadius:12, color:"#c4a882", fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>🌲 幹周り</button>
         </div>
+        {/* 画像プレビューモーダル */}
+        {previewImage && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:200, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 12px", textAlign:"center" }}>長押しして「写真に保存」を選んでください</p>
+          <img src={previewImage} alt="記録画像" style={{ maxWidth:"100%", maxHeight:"65vh", borderRadius:12, display:"block" }} />
+          <p style={{ color:"#7ecba1", fontSize:14, margin:"16px 0 8px", textAlign:"center", lineHeight:1.8 }}>
+            👆 上の画像を<strong>長押し</strong>→「写真に保存」
+          </p>
+          <button onClick={() => setPreviewImage(null)} style={{ marginTop:8, padding:"13px 40px", background:"rgba(126,203,161,0.2)", border:"1px solid rgba(126,203,161,0.5)", borderRadius:12, color:"#7ecba1", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+            閉じる
+          </button>
+        </div>}
       </>}
     </div>
   );

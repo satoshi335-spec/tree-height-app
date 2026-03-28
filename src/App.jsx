@@ -1832,45 +1832,69 @@ function CarteApp({ trees, onUpdate, onBack, onMeasureHeight, onMeasureSpread, o
           {cur.gps && <p style={{ fontSize:11, color:"#2d6a4f", margin:"0 0 4px" }}>📍 {cur.gps.lat}, {cur.gps.lng}</p>}
           <p style={{ fontSize:11, color:"#5a8c6a", margin:0 }}>登録：{cur.createdAt}　更新：{cur.updatedAt}</p>
         </div>
-        {(cur.measurements?.height||cur.measurements?.spread||cur.measurements?.trunk||cur.measurements?.age)&&<div style={CARD}>
-          <p style={{ fontSize:13, color:"#2d6a4f", marginBottom:12 }}>測定値</p>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom: cur.measurements?.age ? 10 : 0 }}>
-            {[["樹高",cur.measurements?.height,"m",GRN],["枝張り",cur.measurements?.spread,"m",GOLD],["幹周り",cur.measurements?.trunk,"cm",BLUE],["推定樹齢",cur.measurements?.age,"年","#a8d5b5"]].map(([l,v,u,c])=>v&&(
-              <div key={l} style={{ flex:1, background:"rgba(255,255,255,0.9)", borderRadius:10, padding:"10px 12px", textAlign:"center", minWidth:68 }}>
-                <p style={{ fontSize:10, color:"#5a8c6a", margin:"0 0 2px" }}>{l}</p>
-                <p style={{ fontSize:22, fontWeight:"bold", color:c, margin:0, lineHeight:1 }}>{v}</p>
-                <p style={{ fontSize:11, color:"#5a8c6a", margin:0 }}>{u}</p>
+        {/* 測定値カード */}
+        {(cur.measurements?.height||cur.measurements?.spread||cur.measurements?.trunk||cur.measurements?.age)&&<div style={{ background:"linear-gradient(135deg,rgba(45,106,79,0.1),rgba(45,106,79,0.04))", border:"1px solid rgba(126,203,161,0.3)", borderRadius:16, padding:"18px 16px", marginBottom:12 }}>
+          <p style={{ fontSize:12, color:"#5a8c6a", margin:"0 0 14px", letterSpacing:2 }}>測定値</p>
+          {/* 樹高・枝張り・幹周り：横3列 */}
+          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+            {[["樹高",cur.measurements?.height,"m",GRN,"📐"],["枝張り",cur.measurements?.spread,"m",GOLD,"🌿"],["幹周り",cur.measurements?.trunk,"cm",BLUE,"🌲"]].map(([l,v,u,c,e])=>(
+              <div key={l} style={{ flex:1, background:"rgba(255,255,255,0.85)", borderRadius:12, padding:"12px 8px", textAlign:"center", border:`1.5px solid ${v ? c+"55" : "rgba(200,200,200,0.3)"}` }}>
+                <p style={{ fontSize:11, color:"#5a8c6a", margin:"0 0 4px" }}>{e} {l}</p>
+                <p style={{ fontSize:v ? 28 : 20, fontWeight:"bold", color: v ? c : "#ccc", margin:0, lineHeight:1.1, letterSpacing:-1 }}>{v || "―"}</p>
+                {v && <p style={{ fontSize:11, color:"#5a8c6a", margin:"2px 0 0" }}>{u}</p>}
               </div>
             ))}
           </div>
-          {cur.measurements?.age && <div style={{ background:"rgba(255,193,7,0.07)", border:"1px solid rgba(255,193,7,0.18)", borderRadius:8, padding:"8px 12px" }}>
-            <p style={{ fontSize:11, color:"#ffc107", margin:0, lineHeight:1.7 }}>
-              ⚠️ 推定樹齢は参考値です。成長速度は立地・気候・管理条件により大きく異なります。
-            </p>
+          {/* 推定樹齢：1行大きく */}
+          {cur.measurements?.age && <div style={{ background:"rgba(168,213,181,0.15)", border:"1px solid rgba(168,213,181,0.4)", borderRadius:12, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <p style={{ fontSize:11, color:"#5a8c6a", margin:"0 0 2px" }}>🌱 推定樹齢</p>
+              <p style={{ fontSize:11, color:"rgba(255,193,7,0.7)", margin:0 }}>⚠️ 参考値（気候・立地により異なります）</p>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <span style={{ fontSize:42, fontWeight:"bold", color:"#a8d5b5", letterSpacing:-2 }}>{cur.measurements.age}</span>
+              <span style={{ fontSize:16, color:"#5a8c6a", marginLeft:4 }}>年</span>
+            </div>
           </div>}
         </div>}
-        {/* 画像保存ボタン */}
-        <button onClick={async () => {
-            const dataUrl = await saveTreeImage(cur);
-            if (dataUrl) setPreviewImage(dataUrl);
-          }}
-          style={{ width:"100%", padding:"13px", background:"rgba(126,203,161,0.15)", border:`1px solid ${GRN}`, borderRadius:12, color:GRN, fontSize:14, cursor:"pointer", marginBottom:8, fontFamily:"inherit", letterSpacing:1 }}>
-          📸　記録画像を作成する
-        </button>
-        {/* 詳細画面からも測定ボタン */}
-        <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
-          <button onClick={() => onMeasureHeight(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(116,179,206,0.1)", border:`1px solid ${BLUE}`, borderRadius:12, color:BLUE, fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>📐 樹高</button>
-          <button onClick={() => onMeasureSpread(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(255,209,102,0.1)", border:`1px solid ${GOLD}`, borderRadius:12, color:GOLD, fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>🌿 枝張り</button>
-          <button onClick={() => onMeasureTrunk(cur.id)} style={{ flex:1, padding:"11px 6px", background:"rgba(141,110,99,0.1)", border:"1px solid #8d6e63", borderRadius:12, color:"#c4a882", fontSize:12, cursor:"pointer", fontFamily:"inherit", minWidth:80 }}>🌲 幹周り</button>
+        {/* 記録画像 & 測定ボタン */}
+        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+          <button onClick={async () => { const d = await saveTreeImage(cur); if (d) setPreviewImage(d); }}
+            style={{ flex:1, padding:"13px 6px", background:"rgba(126,203,161,0.15)", border:`1.5px solid ${GRN}`, borderRadius:12, color:GRN, fontSize:13, cursor:"pointer", fontFamily:"inherit", textAlign:"center" }}>
+            📸 記録画像
+          </button>
+          <button onClick={() => onMeasureHeight(cur.id)} style={{ flex:1, padding:"13px 6px", background:"rgba(116,179,206,0.1)", border:`1.5px solid ${BLUE}`, borderRadius:12, color:BLUE, fontSize:13, cursor:"pointer", fontFamily:"inherit", textAlign:"center" }}>📐 樹高</button>
+          <button onClick={() => onMeasureSpread(cur.id)} style={{ flex:1, padding:"13px 6px", background:"rgba(255,209,102,0.1)", border:`1.5px solid ${GOLD}`, borderRadius:12, color:GOLD, fontSize:13, cursor:"pointer", fontFamily:"inherit", textAlign:"center" }}>🌿 枝張り</button>
+          <button onClick={() => onMeasureTrunk(cur.id)} style={{ flex:1, padding:"13px 6px", background:"rgba(168,213,181,0.1)", border:"1.5px solid #a8d5b5", borderRadius:12, color:"#a8d5b5", fontSize:13, cursor:"pointer", fontFamily:"inherit", textAlign:"center" }}>🌲 幹周り</button>
         </div>
         {/* 画像プレビューモーダル */}
         {previewImage && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:200, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <p style={{ color:"rgba(255,255,255,0.6)", fontSize:12, margin:"0 0 12px", textAlign:"center" }}>長押しして「写真に保存」を選んでください</p>
-          <img src={previewImage} alt="記録画像" style={{ maxWidth:"100%", maxHeight:"65vh", borderRadius:12, display:"block" }} />
-          <p style={{ color:"#7ecba1", fontSize:14, margin:"16px 0 8px", textAlign:"center", lineHeight:1.8 }}>
-            👆 上の画像を<strong>長押し</strong>→「写真に保存」
+          <p style={{ color:"rgba(255,255,255,0.55)", fontSize:12, margin:"0 0 10px", textAlign:"center" }}>
+            下の「写真に保存」ボタン、または画像を長押しして保存してください
           </p>
-          <button onClick={() => setPreviewImage(null)} style={{ marginTop:8, padding:"13px 40px", background:"rgba(126,203,161,0.2)", border:"1px solid rgba(126,203,161,0.5)", borderRadius:12, color:"#7ecba1", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
+          <img src={previewImage} alt="記録画像" style={{ maxWidth:"100%", maxHeight:"55vh", borderRadius:12, display:"block" }} />
+          {/* Web Share API で直接保存 or 長押しガイド */}
+          <button onClick={async () => {
+            try {
+              // DataURLをBlobに変換
+              const res = await fetch(previewImage);
+              const blob = await res.blob();
+              const file = new File([blob], (cur?.name||"tree")+"_記録.png", { type:"image/png" });
+              if (navigator.canShare && navigator.canShare({ files:[file] })) {
+                await navigator.share({ files:[file], title: cur?.name||"大きな木" });
+              } else {
+                alert("長押しして「写真に保存」を選んでください");
+              }
+            } catch(e) {
+              if (e.name !== "AbortError") alert("長押しして「写真に保存」を選んでください");
+            }
+          }} style={{ marginTop:14, padding:"14px 0", width:"100%", maxWidth:280, background:"#2d6a4f", border:"none", borderRadius:12, color:"#fff", fontSize:16, cursor:"pointer", fontFamily:"inherit", fontWeight:"bold" }}>
+            📷　写真に保存する
+          </button>
+          <p style={{ color:"rgba(126,203,161,0.7)", fontSize:11, margin:"8px 0 4px", textAlign:"center" }}>
+            または画像を長押し →「写真に保存」
+          </p>
+          <button onClick={() => setPreviewImage(null)} style={{ marginTop:6, padding:"11px 40px", background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:12, color:"rgba(255,255,255,0.6)", fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>
             閉じる
           </button>
         </div>}
@@ -1950,12 +1974,12 @@ async function saveTreeImage(tree) {
   ctx.fillRect(0, H * 0.62, W, H * 0.38);
 
   // ── 右側縦帯（測定値エリア）──
-  const sideGrad = ctx.createLinearGradient(W * 0.72, 0, W, 0);
+  const sideGrad = ctx.createLinearGradient(W * 0.55, 0, W, 0);
   sideGrad.addColorStop(0, "rgba(0,0,0,0)");
-  sideGrad.addColorStop(0.3, "rgba(0,0,0,0.45)");
-  sideGrad.addColorStop(1, "rgba(0,0,0,0.65)");
+  sideGrad.addColorStop(0.6, "rgba(0,0,0,0.12)");
+  sideGrad.addColorStop(1, "rgba(0,0,0,0.28)");
   ctx.fillStyle = sideGrad;
-  ctx.fillRect(W * 0.72, 0, W * 0.28, H * 0.75);
+  ctx.fillRect(W * 0.55, 0, W * 0.45, H * 0.75);
 
   // ── 測定値（右端・縦並び・控えめ） ──
   const measItems = [
@@ -1988,28 +2012,58 @@ async function saveTreeImage(tree) {
   });
   ctx.shadowBlur = 0;
 
-  // ── 木の名前（中央下） ──
-  ctx.shadowColor = "rgba(0,0,0,0.9)";
-  ctx.shadowBlur = 16;
-  ctx.textAlign = "center";
-
-  // 木の名前（控えめ・中央下）
+  // ── 木の名前（1文字ずつランダムサイズ・明朝体） ──
+  ctx.shadowColor = "rgba(0,0,0,0.85)";
+  ctx.shadowBlur = 14;
+  ctx.textAlign = "left";
   ctx.fillStyle = "rgba(255,255,255,0.88)";
-  let nameFontSize = 62;
-  ctx.font = `${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
-  while (ctx.measureText(tree.name).width > W - 160 && nameFontSize > 36) {
-    nameFontSize -= 4;
-    ctx.font = `${nameFontSize}px 'Hiragino Mincho ProN', Georgia, serif`;
-  }
-  ctx.fillText(tree.name, W / 2, H - 100);
+
+  const FONT = "'Hiragino Mincho ProN', 'Yu Mincho', Georgia, serif";
+  const chars = Array.from(tree.name); // 絵文字・漢字対応
+  const BASE = 58; // 基準フォントサイズ
+  const VARIANCE = 22; // ±バラつき幅
+
+  // シード値（木の名前から決定的にランダム）→ 毎回同じバラつきになる
+  const seed = chars.reduce((s, c) => s + c.charCodeAt(0), 0);
+  const rng = (i) => {
+    const x = Math.sin(seed * 9301 + i * 49297 + 233720) * 10000;
+    return x - Math.floor(x);
+  };
+
+  // 各文字のサイズを決める
+  const sizes = chars.map((_, i) => Math.round(BASE - VARIANCE/2 + rng(i) * VARIANCE));
+  // ベースライン位置（大きい文字に合わせる）
+  const baselineOffset = sizes.map((s, i) => Math.round((Math.max(...sizes) - s) * 0.5));
+
+  // 全体幅を計算してセンタリング
+  let totalW = 0;
+  sizes.forEach((s, i) => {
+    ctx.font = `${s}px ${FONT}`;
+    totalW += ctx.measureText(chars[i]).width + (i < chars.length-1 ? 6 : 0);
+  });
+
+  // 幅が画面をはみ出す場合はスケールダウン
+  const scale = Math.min(1, (W - 120) / totalW);
+  const startX = (W - totalW * scale) / 2;
+  const baseY = H - 95;
+
+  let curX = startX;
+  chars.forEach((ch, i) => {
+    const s = Math.round(sizes[i] * scale);
+    ctx.font = `${s}px ${FONT}`;
+    const offY = Math.round(baselineOffset[i] * scale);
+    ctx.fillText(ch, curX, baseY + offY);
+    curX += ctx.measureText(ch).width + Math.round(6 * scale);
+  });
 
   // 記録日・アプリ名（最下部）
-  ctx.font = "24px 'Hiragino Mincho ProN', Georgia, serif";
+  ctx.shadowBlur = 8;
+  ctx.font = `24px ${FONT}`;
   ctx.fillStyle = "rgba(255,255,255,0.38)";
   ctx.textAlign = "left";
-  ctx.fillText(tree.updatedAt, 52, H - 52);
+  ctx.fillText(tree.updatedAt, 52, H - 48);
   ctx.textAlign = "right";
-  ctx.fillText("大きな木", W - 52, H - 52);
+  ctx.fillText("大きな木", W - 52, H - 48);
   ctx.shadowBlur = 0;
 
   // ── DataURL を返す（表示用）──
